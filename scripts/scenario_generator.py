@@ -17,7 +17,7 @@ import yaml
 import pandas as pd
 import math
 
-from src.core.models.target_model import (
+from src.models.target_model import (
     BallisticMissileTargetModel,
     CruiseMissileTargetModel,
     AircraftTargetModel,
@@ -523,24 +523,18 @@ def save_targets_2_csv(targets_data, target_folder_path, target_file_name):
 
 
 def generate_scenario():
-    """ Generates scenario based on target and sample points.
+    """ Generates a scenario based on target and sample points.
     Generate the target list as required by the csv file.
     """
     config = load_config("param_config.yaml")
 
     num_targets = config['num_targets']
-    num_radars = config['num_radars']
     target_drop_position = config["radar_network_center_str"]
     target_aggregation_rate = config["target_aggregation_rate"]
 
     # 创建输出文件夹
     current_date = datetime.now().strftime('%Y-%m-%d')
     output_folder_path = f"output/scenario-{current_date}"
-
-    # 生成并保存雷达数据
-    radars = generate_radars()
-    radar_file_name = config["output"]["radar_filename_template"].format(num_radars=num_radars)
-    save_radars_2_csv(radars, output_folder_path, radar_file_name)
 
     # 生成并保存目标数据
     targets = generate_random_targets(target_drop_position, target_aggregation_rate, time_to_impact=1000)
