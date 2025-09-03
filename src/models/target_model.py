@@ -14,6 +14,7 @@ GRAVITY = np.array([0, 0, -9.81])
 SEA_LEVEL_AIR_DENSITY = 1.225
 ATMOSPHERIC_SCALE_HEIGHT = 8500
 
+
 class TargetModel:
     """Basic target model
 
@@ -211,7 +212,7 @@ class CruiseMissileTargetModel(TargetModel):
 
         # Adding random horizontal disturbances
         horizontal_disturbance = np.random.normal(0, self.DISTURBANCE_SCALE * 0.7, 2)
-        disturbance = np.array([horizontal_disturbance[0], horizontal_disturbance[1], 0]) 
+        disturbance = np.array([horizontal_disturbance[0], horizontal_disturbance[1], 0])
         return height_correction + disturbance
 
     def _apply_dive_control(self):
@@ -361,12 +362,12 @@ class AircraftTargetModel(TargetModel):
             self.time_since_last_maneuver = 0.0  # 重置计时器
         else:
             # 小幅度调整
-            yaw_change = np.random.uniform(-self.TURN_RATE_MAX/5, self.TURN_RATE_MAX/5)
-            pitch_change = np.random.uniform(-self.TURN_RATE_MAX/10, self.TURN_RATE_MAX/10)
+            yaw_change = np.random.uniform(-self.TURN_RATE_MAX / 5, self.TURN_RATE_MAX / 5)
+            pitch_change = np.random.uniform(-self.TURN_RATE_MAX / 10, self.TURN_RATE_MAX / 10)
 
         # 更新航向和俯仰角
         self.yaw += yaw_change
-        self.pitch += np.clip(self.pitch + pitch_change, -np.pi/4, np.pi/4)  # 限制俯仰角范围
+        self.pitch += np.clip(self.pitch + pitch_change, -np.pi / 4, np.pi / 4)  # 限制俯仰角范围
 
         # 计算新方向
         new_direction = np.array([
@@ -377,7 +378,7 @@ class AircraftTargetModel(TargetModel):
 
         # 平滑过渡到新方向，保持一定的稳定性
         self.target_direction = self.DIRECTION_STABILITY * self.target_direction + \
-                               (1 - self.DIRECTION_STABILITY) * new_direction
+                                (1 - self.DIRECTION_STABILITY) * new_direction
         self.target_direction = self.target_direction / np.linalg.norm(self.target_direction)
 
         # 减小扰动幅度，使轨迹更平滑
@@ -400,61 +401,31 @@ class AircraftTargetModel(TargetModel):
         direction, disturbance = self._apply_maneuver(time_step)
         altitude_control = self._apply_altitude_control()
         speed_control = self._apply_speed_control()
-        
+
         # 计算期望速度
         desired_velocity = direction * self.target_speed
-        
+
         # 计算速度差异，使用更平滑的过渡
         velocity_diff = desired_velocity - self.velocity
         direction_correction = velocity_diff * 0.2  # 平滑系数
-        
+
         # 合成加速度
         total_acceleration = (
-            air_resistance +
-            altitude_control +
-            direction_correction / time_step +  # 方向修正
-            disturbance / time_step +
-            speed_control
+                air_resistance +
+                altitude_control +
+                direction_correction / time_step +  # 方向修正
+                disturbance / time_step +
+                speed_control
         )
-        
+
         # 限制加速度大小
         acc_magnitude = np.linalg.norm(total_acceleration)
         if acc_magnitude > self.MAX_ACCELERATION:
             total_acceleration = total_acceleration * (self.MAX_ACCELERATION / acc_magnitude)
-        
+
         # 防止NaN和无穷大
         self.acceleration = np.nan_to_num(total_acceleration, nan=0.0, posinf=0.0, neginf=0.0)
-        
-        # 更新速度和位置
-        self.velocity += self.acceleration * time_step
-        self.target_position += self.velocity * time_step
-
-        """
-        # 分别处理每个加速度分量，避免直接相加
-        if speed > 0 and time_step > 0:
-            desired_velocity = direction * speed
-            velocity_diff = desired_velocity - self.velocity
-            maneuver_acceleration = np.nan_to_num(velocity_diff / time_step, nan=0.0, posinf=0.0, neginf=0.0)
-
-            # 分别处理每个加速度分量
-            disturbance_acceleration = np.nan_to_num(disturbance / time_step, nan=0.0, posinf=0.0, neginf=0.0)
-            air_resistance = np.nan_to_num(air_resistance, nan=0.0, posinf=0.0, neginf=0.0)
-            altitude_control = np.nan_to_num(altitude_control, nan=0.0, posinf=0.0, neginf=0.0)
-
-            # 安全地合成总加速度
-            self.acceleration = (
-                    maneuver_acceleration +
-                    altitude_control +
-                    air_resistance +
-                    disturbance_acceleration
-            )
-        else:
-            self.acceleration = np.nan_to_num(
-                altitude_control + air_resistance,
-                nan=0.0, posinf=0.0, neginf=0.0
-            )
 
         # 更新速度和位置
         self.velocity += self.acceleration * time_step
         self.target_position += self.velocity * time_step
-        """
