@@ -9,6 +9,7 @@
 """
 import numpy as np
 import math
+import copy
 
 GRAVITY = np.array([0, 0, -9.81])
 SEA_LEVEL_AIR_DENSITY = 1.225  # The standard density of sea level air is 1.225 kg/m3
@@ -432,4 +433,369 @@ class AircraftTargetModel(AirEquipmentMotion):
         self.target_position += self.velocity * time_step
 
 
-class AntiWeapon(AirEquipmentMotion):
+class AntiWeapon:
+    """Anti-Weapon model for ground-based missile defense system
+
+    This class models ground-based anti-missile weapons that intercept airborne targets.
+    It calculates interception points, launch angles, and timing parameters based on
+    target motion prediction and the anti-weapon's capabilities.
+
+    Attributes:
+        weapon_id:          Unique identifier for the anti-weapon system
+        weapon_position:    Ground position of the anti-weapon (z-coordinate is always 0)
+        weapon_type:        Type of the anti-weapon, determining its characteristics
+        avg_speed:          Average speed of the anti-missile (m/s)
+        max_range:          Maximum effective range of the anti-weapon system (m)
+        min_range:          Minimum effective range of the anti-weapon system (m)
+        max_altitude:       Maximum altitude the anti-missile can reach (m)
+    """
+
+    # Define weapon type characteristics as a class attribute
+    WEAPON_SPECIFICATIONS = {
+        "AntiMissile1": {  # 原 interceptor_for_ballistic
+            "avg_speed": 2500,  # 高速拦截弹，适合拦截弹道导弹
+            "max_range": 200000,
+            "min_range": 20000,
+            "max_altitude": 100000
+        },
+        "AntiMissile2": {  # 原 interceptor_for_cruise
+            "avg_speed": 1000,  # 中速拦截弹，适合拦截巡航导弹
+            "max_range": 100000,
+            "min_range": 5000,
+            "max_altitude": 20000
+        },
+        "AntiMissile3": {  # 原 interceptor_for_aircraft
+            "avg_speed": 800,   # 低速拦截弹，适合拦截飞机
+            "max_range": 80000,
+            "min_range": 2000,
+            "max_altitude": 25000
+        }
+        # 可以在此处添加新的武器类型
+    }
+
+    def __init__(self, weapon_id, weapon_position, weapon_type):
+        """Initializes the AntiWeapon model.
+
+        :param weapon_id: Unique identifier for the anti-weapon
+        :param weapon_position: Ground position [x, y, z] where z is always 0
+        :param weapon_type: Type of the anti-weapon (e.g., "AntiMissile1", "AntiMissile2", or "AntiMissile3")
+        """
+        self.weapon_id = weapon_id
+        # Ensure the weapon is on the ground (z=0)
+        weapon_position_array = np.array(weapon_position, dtype=np.float64)
+        weapon_position_array[2] = 0.0  # Force z-coordinate to be 0
+        self.weapon_position = weapon_position_array
+        self.weapon_type = weapon_type
+
+        # Set weapon characteristics based on type
+        specs = self.WEAPON_SPECIFICATIONS.get(weapon_type)
+        if not specs:
+            raise ValueError(f"未知的武器类型: {weapon_type}，可用类型: {list(self.WEAPON_SPECIFICATIONS.keys())}")
+
+        self.avg_speed = specs["avg_speed"]
+        self.max_range = specs["max_range"]
+        self.min_range = specs["min_range"]
+        self.max_altitude = specs["max_altitude"]
+
+    def predict_target_position(self, target, time_to_future):
+        """Predicts the future position of a target based on its current state using Extended Kalman Filter.
+        
+        This method uses appropriate EKF model based on target type for more accurate prediction.
+        
+        :param target: Target object (BallisticMissile, CruiseMissile, or AircraftTargetModel)
+        :param time_to_future: Time in seconds to predict into the future
+        :return: Predicted position of the target
+        """
+        from src.utils.filter import BallisticMissileEKF, CruiseMissileEKF, AircraftIMMEKF
+        
+        # 确定目标类型并选择合适的EKF模型
+        if target.target_type == "Ballistic_Missile":
+            ekf = BallisticMissileEKF(dt=0.1)  # 使用较小的时间步长
+            # 设置初始状态向量 [x, y, z, vx, vy, vz, ax, ay, az]
+            ekf.x = np.concatenate([
+                target.target_position,
+                target.velocity,
+                target.acceleration
+            ])
+        elif target.target_type == "Cruise_Missile":
+            ekf = CruiseMissileEKF(dt=0.1)
+            # 设置初始状态向量 [x, y, z, vx, vy, vz, ax, ay, az]
+            ekf.x = np.concatenate([
+                target.target_position,
+                target.velocity,
+                target.acceleration
+            ])
+        else:  # 默认为飞机目标
+            ekf = AircraftIMMEKF(dt=0.1)
+            # 对于IMM-EKF，我们需要更新所有模型的状态
+            # 设置CV模型的状态 [x, y, z, vx, vy, vz]
+            ekf.filters[ekf.filters.keys()[0]].x = np.concatenate([
+                target.target_position,
+                target.velocity
+            ])
+            # 如果有CA模型，设置其状态 [x, y, z, vx, vy, vz, ax, ay, az]
+            if len(ekf.filters) > 1:
+                ekf.filters[ekf.filters.keys()[2]].x = np.concatenate([
+                    target.target_position,
+                    target.velocity,
+                    target.acceleration
+                ])
+        
+        # 设置初始协方差矩阵为适度不确定性
+        if hasattr(ekf, 'P'):
+            ekf.P = np.eye(ekf.state_dim) * 10.0
+        
+        # 预测未来位置
+        steps = int(time_to_future / ekf.dt)
+        for _ in range(steps):
+            ekf.predict()
+        
+        # 返回预测的位置
+        if hasattr(ekf, 'x'):
+            return ekf.x[:3]  # 返回位置部分 [x, y, z]
+        else:  # 对于IMM-EKF，返回组合估计
+            combined_state = ekf._combine_estimates()
+            return combined_state[:3]  # 返回位置部分 [x, y, z]
+    
+    def calculate_interception_time(self, target, current_time, max_prediction_time=300, time_step=0.1):
+        """Calculates the interception time and point for a given target.
+        
+        Uses an iterative approach to find when the anti-missile can intercept the target.
+        
+        :param target: Target object to intercept
+        :param current_time: Current simulation time
+        :param max_prediction_time: Maximum time to look ahead for interception
+        :param time_step: Time step for the iterative calculation
+        :return: Dictionary with interception parameters or None if interception is impossible
+        """
+        for t in np.arange(0, max_prediction_time, time_step):
+            # Predict target position at time t
+            predicted_target_pos = self.predict_target_position(target, t)
+            
+            # Calculate distance from weapon to predicted target position
+            distance = np.linalg.norm(predicted_target_pos - self.weapon_position)
+            
+            # Check if target is within range constraints
+            if distance > self.max_range or distance < self.min_range:
+                continue
+                
+            # Check if target altitude is within capability
+            if predicted_target_pos[2] > self.max_altitude:
+                continue
+            
+            # Calculate time needed for anti-missile to reach this point
+            time_to_reach = distance / self.avg_speed
+            
+            # If the time to reach is approximately equal to the prediction time,
+            # we've found an interception point
+            if abs(time_to_reach - t) < time_step:
+                # Calculate launch angle (elevation angle from horizontal)
+                horizontal_distance = np.linalg.norm(predicted_target_pos[:2] - self.weapon_position[:2])
+                elevation_angle = np.arctan2(predicted_target_pos[2], horizontal_distance)
+                elevation_angle_degrees = np.degrees(elevation_angle)
+                
+                # Calculate azimuth angle (not required as per specifications, but included for completeness)
+                azimuth = np.arctan2(predicted_target_pos[1] - self.weapon_position[1], 
+                                     predicted_target_pos[0] - self.weapon_position[0])
+                azimuth_degrees = np.degrees(azimuth) % 360
+                
+                return {
+                    'interception_possible': True,
+                    'target_id': target.target_id,
+                    'interception_point': predicted_target_pos,
+                    'time_to_interception': time_to_reach,  # Time from launch to interception
+                    'launch_time': current_time,  # Current time is when we launch
+                    'interception_time': current_time + time_to_reach,  # When interception occurs
+                    'elevation_angle': elevation_angle_degrees,  # In degrees (0-90)
+                    'azimuth_angle': azimuth_degrees,  # In degrees (0-360)
+                    'distance': distance  # Distance from launcher to interception point
+                }
+        
+        # If we get here, no interception point was found
+        return {
+            'interception_possible': False,
+            'target_id': target.target_id,
+            'reason': 'No viable interception solution found within constraints'
+        }
+    
+    def can_intercept(self, target):
+        """Checks if the target can be intercepted with current weapon position and capabilities.
+        
+        Different weapon types have different interception success rates based on target type and distance.
+        
+        :param target: Target object to check
+        :return: Dictionary with interception probability and constraints information
+        """
+        # 定义不同武器类型对不同目标的基础拦截成功率
+        BASE_INTERCEPTION_RATES = {
+            "AntiMissile1": {  # 原 interceptor_for_ballistic
+                "Ballistic_Missile": 0.85,  # 对弹道导弹的拦截成功率高
+                "cruise_missile": 0.60,     # 对巡航导弹的拦截成功率中等
+                "Aircraft": 0.70            # 对飞机的拦截成功率中高
+            },
+            "AntiMissile2": {  # 原 interceptor_for_cruise
+                "Ballistic_Missile": 0.40,  # 对弹道导弹的拦截成功率低
+                "cruise_missile": 0.80,     # 对巡航导弹的拦截成功率高
+                "Aircraft": 0.65            # 对飞机的拦截成功率中等
+            },
+            "AntiMissile3": {  # 原 interceptor_for_aircraft
+                "Ballistic_Missile": 0.30,  # 对弹道导弹的拦截成功率低
+                "cruise_missile": 0.55,     # 对巡航导弹的拦截成功率中等
+                "Aircraft": 0.75            # 对飞机的拦截成功率高
+            }
+        }
+        
+        # 计算距离
+        distance = np.linalg.norm(target.target_position - self.weapon_position)
+        
+        # 检查基本约束条件
+        range_ok = self.min_range <= distance <= self.max_range
+        altitude_ok = target.target_position[2] <= self.max_altitude
+        
+        # 如果不满足基本约束条件，直接返回不可拦截
+        if not (range_ok and altitude_ok):
+            return {
+                "can_intercept": False,
+                "reason": "Target outside weapon constraints",
+                "range_ok": range_ok,
+                "altitude_ok": altitude_ok,
+                "probability": 0.0
+            }
+        
+        # 获取基础拦截成功率
+        base_rate = BASE_INTERCEPTION_RATES.get(self.weapon_type, {}).get(target.target_type, 0.5)
+        
+        # 根据距离调整拦截成功率
+        # 在最佳拦截范围内（30%-70%的最大范围）拦截成功率最高
+        optimal_min = self.min_range + (self.max_range - self.min_range) * 0.3
+        optimal_max = self.min_range + (self.max_range - self.min_range) * 0.7
+        
+        distance_factor = 1.0  # 默认距离因子
+        
+        if distance < optimal_min:
+            # 距离太近，成功率降低
+            distance_factor = 0.7 + 0.3 * (distance - self.min_range) / (optimal_min - self.min_range)
+        elif distance > optimal_max:
+            # 距离太远，成功率降低
+            distance_factor = 0.7 + 0.3 * (self.max_range - distance) / (self.max_range - optimal_max)
+        
+        # 计算最终拦截成功率
+        interception_probability = base_rate * distance_factor
+        
+        return {
+            "can_intercept": True,
+            "range_ok": range_ok,
+            "altitude_ok": altitude_ok,
+            "probability": interception_probability,
+            "distance": distance,
+            "weapon_type": self.weapon_type,
+            "target_type": target.target_type
+        }
+    
+    def calculate_optimal_launch_parameters(self, target, current_time, time_horizon=60, time_step=1.0):
+        """Calculates optimal launch parameters for intercepting a target.
+        
+        This method looks ahead over a time horizon to find the best interception opportunity.
+        
+        :param target: Target object to intercept
+        :param current_time: Current simulation time
+        :param time_horizon: How far ahead in time to look for interception opportunities
+        :param time_step: Time step for checking interception opportunities
+        :return: Dictionary with optimal launch parameters or None if interception is impossible
+        """
+        best_solution = None
+        best_score = float('inf')  # Lower is better
+        
+        # Check multiple future launch times
+        for launch_delay in np.arange(0, time_horizon, time_step):
+            # Calculate interception at this potential launch time
+            future_time = current_time + launch_delay
+            
+            # Create a copy of the target to simulate its future state
+            # This is a simplified approach - in a real system, you would use a proper prediction model
+            target_copy = copy.deepcopy(target)
+            
+            # Update target state to the potential launch time
+            for _ in np.arange(0, launch_delay, time_step):
+                target_copy.update_state(time_step)
+            
+            # Calculate interception for this future launch time
+            interception = self.calculate_interception_time(target_copy, future_time)
+            
+            if interception['interception_possible']:
+                # Score this solution (lower is better)
+                # Here we prioritize earlier interception and shorter flight times
+                score = interception['interception_time'] + 0.5 * interception['time_to_interception']
+                
+                if score < best_score:
+                    best_score = score
+                    best_solution = interception
+                    best_solution['launch_time'] = future_time  # Update with the actual launch time
+        
+        return best_solution
+    
+    def simulate_interception(self, target, launch_time, time_step=0.1, max_simulation_time=300):
+        """Simulates the interception process with more detailed physics.
+        
+        This method provides a more accurate simulation of the interception by considering
+        changing target position during the anti-missile flight.
+        
+        :param target: Target object to intercept
+        :param launch_time: Time when the anti-missile is launched
+        :param time_step: Simulation time step
+        :param max_simulation_time: Maximum simulation time
+        :return: Dictionary with detailed interception results
+        """
+        # Initial calculation to get approximate interception point
+        initial_calc = self.calculate_interception_time(target, launch_time)
+        
+        if not initial_calc['interception_possible']:
+            return initial_calc
+        
+        # Extract initial parameters
+        initial_interception_point = initial_calc['interception_point']
+        initial_time_to_interception = initial_calc['time_to_interception']
+        
+        # Calculate initial direction vector for the anti-missile
+        direction = initial_interception_point - self.weapon_position
+        direction = direction / np.linalg.norm(direction)
+        
+        # Simulate the interception process
+        current_time = launch_time
+        anti_missile_position = self.weapon_position.copy()
+        target_copy = copy.deepcopy(target)
+        
+        for _ in range(int(max_simulation_time / time_step)):
+            # Update target position
+            target_copy.update_state(time_step)
+            
+            # Update anti-missile position (simplified - constant speed along initial direction)
+            anti_missile_position += direction * self.avg_speed * time_step
+            
+            # Check if interception occurred
+            distance_to_target = np.linalg.norm(anti_missile_position - target_copy.target_position)
+            if distance_to_target < 10:  # Assuming 10m is close enough for interception
+                return {
+                    'interception_possible': True,
+                    'target_id': target.target_id,
+                    'interception_point': target_copy.target_position,
+                    'time_to_interception': current_time - launch_time,
+                    'launch_time': launch_time,
+                    'interception_time': current_time,
+                    'distance': np.linalg.norm(target_copy.target_position - self.weapon_position),
+                    'simulation_detail': 'Detailed simulation with target movement during interception'
+                }
+            
+            current_time += time_step
+            
+            # If we've gone significantly past the expected interception time, abort
+            if current_time > launch_time + 1.5 * initial_time_to_interception:
+                break
+        
+        return {
+            'interception_possible': False,
+            'target_id': target.target_id,
+            'reason': 'Detailed simulation failed to achieve interception'
+        }
+
+
