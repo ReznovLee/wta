@@ -1,9 +1,12 @@
-#!/usr/bin/env python
-# -*- coding: UTF-8 -*-
-"""
-@Project ：wta
-@File ：base_model.py
-@IDE ：PyCharm
-@Author ：reznovlee
-@Date ：2025/8/27 16:43
-"""
+import os
+import torch
+
+
+class BaseModel:
+    def save(self, path):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        torch.save(self.state_dict(), path)
+
+    def load(self, path, map_location=None):
+        state = torch.load(path, map_location=map_location)
+        self.load_state_dict(state)

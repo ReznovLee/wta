@@ -1,0 +1,18 @@
+# Model configuration for Decision Transformer + IQL
+decision_transformer:
+  d_model: 256
+  n_heads: 8
+  n_layers: 4
+  dropout: 0.1
+  max_seq_len: 256
+  pointer_top_k: 32
+encoder:
+  use_relative_pos: true
+  spatial_temporal_encoder: true
+iql:
+  actor_lr: 0.0003
+  critic_lr: 0.0003
+  tau: 0.005
+  discount: 0.99
+  expectile: 0.7
+  awr_beta: 1.0

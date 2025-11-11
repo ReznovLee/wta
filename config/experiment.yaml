@@ -1,0 +1,12 @@
+# Experiment configuration
+training:
+  offline_epochs: 10
+  iql_steps: 50000
+  batch_size: 64
+  eval_interval_steps: 1000
+  save_interval_steps: 5000
+paths:
+  logs: "experiments/results/logs"
+  models: "experiments/results/models"
+  metrics: "experiments/results/metrics"
+  plots: "experiments/results/plots"

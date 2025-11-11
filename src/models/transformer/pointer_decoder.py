@@ -1,9 +1,12 @@
-#!/usr/bin/env python
-# -*- coding: UTF-8 -*-
-"""
-@Project ：wta
-@File ：pointer_decoder.py
-@IDE ：PyCharm
-@Author ：reznovlee
-@Date ：2025/8/27 16:46
-"""
+import torch
+import torch.nn as nn
+
+
+class PointerDecoder(nn.Module):
+    def __init__(self, d_model=256):
+        super().__init__()
+        self.query_proj = nn.Linear(d_model, d_model)
+        self.key_proj = nn.Linear(d_model, d_model)
+
+    def decode(self, query_set, key_set, action_masks, top_k=32):
+        return None

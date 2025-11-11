@@ -2,8 +2,8 @@
 # -*- coding: UTF-8 -*-
 """
 @Project ：wta
-@File ：__init__.py.py
+@File ：implicit_q_learning.py
 @IDE ：PyCharm
 @Author ：reznovlee
-@Date ：2025/8/27 16:44
+@Date ：2025/8/27 16:46
 """

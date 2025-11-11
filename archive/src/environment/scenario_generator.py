@@ -1,3 +1,8 @@
+"""Alias module for ScenarioGenerator to provide correct spelling import path."""
+from src.environment.scenario_generator import ScenarioGenerator  # re-export
+
+__all__ = ["ScenarioGenerator"]
+
 # !/usr/bin/env python
 # -*- coding: UTF-8 -*-
 """
@@ -35,9 +40,9 @@ def load_config(yaml_file):
     """
     current_dir = os.path.dirname(os.path.abspath(__file__))
     if sys.platform == 'win32':
-        config_path = os.path.join(current_dir, 'src\data\config', yaml_file)
+        config_path = os.path.join(current_dir, 'data\config', yaml_file)
     else:
-        config_path = os.path.join(current_dir, 'src/data/config', yaml_file)
+        config_path = os.path.join(current_dir, 'data/config', yaml_file)
     with open(config_path, 'r', encoding='UTF-8') as stream:
         config = yaml.safe_load(stream)
     return config

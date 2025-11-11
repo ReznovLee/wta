@@ -1,0 +1,5 @@
+inherits: ../..//config/experiment.yaml
+training:
+  offline_epochs: 20
+  iql_steps: 60000
+  batch_size: 128

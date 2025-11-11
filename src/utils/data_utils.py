@@ -1,9 +1,13 @@
-#!/usr/bin/env python
-# -*- coding: UTF-8 -*-
-"""
-@Project ：wta
-@File ：data_utils.py
-@IDE ：PyCharm
-@Author ：reznovlee
-@Date ：2025/8/27 16:53
-"""
+import os
+
+
+def load_scenarios(path):
+    return []
+
+
+def to_tensor_batch(samples, max_len):
+    return {}
+
+
+def split_train_val(data_root, split_cfg):
+    return [], []
