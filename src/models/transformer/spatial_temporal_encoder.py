@@ -10,5 +10,5 @@ class SpatialTemporalEncoder(nn.Module):
 
     def forward(self, states):
         if not isinstance(states, torch.Tensor):
-            states = torch.randn(1, 1, 256)
+            states = torch.tensor(states, dtype=torch.float32)
         return self.encoder(states)
