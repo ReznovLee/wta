@@ -169,6 +169,9 @@ class WTAEnv:
             'late_assignments': 0,
             'capacity_violations': 0,
             'extra_assignments': 0,
+            'hits_value_sum': 0.0,
+            'time_factor_sum': 0.0,
+            'coop_met_hits': 0,
         }
 
         # 1) 解析动作为分配对列表 pairs
@@ -221,6 +224,8 @@ class WTAEnv:
                 'j': j,
                 'scheduled_time': scheduled_time,
                 'hit_prob': float(interceptor.get('hit_prob', 0.7)),
+                'defense_time': t_defense,
+                'pending_to_target': pending_to_target + 1,
             })
             # 扣减弹药与统计
             interceptor['ammo'] -= 1
@@ -236,6 +241,8 @@ class WTAEnv:
         for idx, ev in enumerate(self._events):
             if self.t >= ev['scheduled_time']:
                 i, j, hit_prob = ev['i'], ev['j'], ev['hit_prob']
+                def_time = float(ev.get('defense_time', np.inf))
+                coop_cnt = int(ev.get('pending_to_target', 1))
                 # 再次检查目标是否仍存活
                 if self._is_valid_index(i, j):
                     tgt = self.state['targets'][j]
@@ -244,6 +251,15 @@ class WTAEnv:
                         if hit:
                             outcomes['hits'] += 1
                             tgt['alive'] = False
+                            vmap = {'ballistic': 3.0, 'cruise': 2.0, 'aircraft': 1.0}
+                            vt = float(vmap.get(str(tgt.get('type', 'cruise')), 1.0))
+                            outcomes['hits_value_sum'] += vt
+                            if np.isfinite(def_time) and def_time > 1e-9:
+                                tf = max(0.0, (def_time - (ev['scheduled_time'] - (self.t - self.time_step))) / def_time)
+                                outcomes['time_factor_sum'] += tf
+                            coop_min = int(self.env_cfg.get('coop_min_by_type', {}).get(str(tgt.get('type', 'cruise')), 1))
+                            if coop_cnt >= max(1, coop_min):
+                                outcomes['coop_met_hits'] += 1
                         else:
                             outcomes['misses'] += 1
                     else:
@@ -264,7 +280,8 @@ class WTAEnv:
         all_intercepted = all((not t.get('alive', True)) for t in self.state['targets'])
         done = (self.t >= self.horizon) or all_intercepted
         if done:
-            reward += self.reward_calc.compute_terminal_reward({'intercept_all': all_intercepted})
+            alive_vals = [float({'ballistic': 3.0, 'cruise': 2.0, 'aircraft': 1.0}.get(str(t.get('type', 'cruise')), 1.0)) for t in self.state['targets'] if t.get('alive', True)]
+            reward += self.reward_calc.compute_terminal_reward({'intercept_all': all_intercepted, 'penetrated_value_sum': float(sum(alive_vals))})
 
         info = {
             't': self.t,

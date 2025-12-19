@@ -177,7 +177,7 @@ def build_offline_dataset(scenario_cfg: Dict[str, Any], data_cfg: Dict[str, Any]
         step_idx = 0
         while not done and step_idx < max_len:
             masks = env.get_action_masks()
-            action = policy.act(obs, masks)
+            action = _mixed_expert_action(env, obs, masks, env.rng)
             obs, reward, done, info = env.step(action)
             steps.append({
                 'obs': obs,
@@ -211,3 +211,48 @@ def build_offline_dataset(scenario_cfg: Dict[str, Any], data_cfg: Dict[str, Any]
         json.dump(index_manifest, f, ensure_ascii=False, indent=2)
 
     logger.info(f"数据集生成完成：episodes={num_episodes}, total_steps={index_manifest['stats']['total_steps']}, 格式='{fmt}'")
+
+
+def _mixed_expert_action(env, obs, masks, rng):
+    assign = masks.get('assign_mask')
+    alive = masks.get('alive_mask')
+    range_m = masks.get('range_mask')
+    capacity = masks.get('capacity_mask')
+    defense = masks.get('defense_time_mask')
+    ammo = masks.get('ammo_mask')
+    base = assign if assign is not None else (range_m or alive or capacity or defense or ammo)
+    if base is None:
+        return []
+    if alive is None: alive = base
+    if range_m is None: range_m = base
+    if capacity is None: capacity = base
+    if defense is None: defense = base
+    if ammo is None: ammo = base
+    combined = assign & alive & range_m & capacity & defense & ammo
+    import numpy as np
+    idxs = np.argwhere(combined)
+    if idxs.size == 0:
+        return []
+    tti = masks.get('pairwise_tti')
+    if isinstance(tti, np.ndarray) and tti.shape == combined.shape:
+        # experts: shortest TTI, highest value
+        vmap = {'ballistic': 3.0, 'cruise': 2.0, 'aircraft': 1.0}
+        values = []
+        for j, tgt in enumerate(env.state['targets']):
+            values.append(vmap.get(str(tgt.get('type', 'cruise')), 1.0))
+        # random
+        if rng.rand() < 0.1:
+            pick = idxs[rng.randint(0, idxs.shape[0])]
+            return [(int(pick[0]), int(pick[1]))]
+        # shortest TTI
+        idxs_sorted_tti = sorted(idxs.tolist(), key=lambda ij: tti[ij[0], ij[1]])
+        best_tti = idxs_sorted_tti[0]
+        # highest value then tti
+        idxs_sorted_val = sorted(idxs.tolist(), key=lambda ij: (-values[ij[1]], tti[ij[0], ij[1]]))
+        if rng.rand() < 0.5:
+            i, j = best_tti
+        else:
+            i, j = idxs_sorted_val[0]
+        return [(int(i), int(j))]
+    pick = idxs[0]
+    return [(int(pick[0]), int(pick[1]))]

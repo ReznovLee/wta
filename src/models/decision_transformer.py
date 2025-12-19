@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from .transformer.spatial_temporal_encoder import SpatialTemporalEncoder
+from .transformer.hierarchical_encoder import HierarchicalEncoder
 from .transformer.pointer_decoder import PointerDecoder
 
 
@@ -12,7 +13,13 @@ class DecisionTransformer(nn.Module):
         n_heads = dt_cfg.get('n_heads', 8)
         n_layers = dt_cfg.get('n_layers', 4)
         dropout = dt_cfg.get('dropout', 0.1)
-        self.encoder = SpatialTemporalEncoder(d_model=d_model, n_heads=n_heads, n_layers=n_layers, dropout=dropout)
+        use_hier = bool(cfg.get('encoder', {}).get('hierarchical_attention', False))
+        self.use_hier = use_hier
+        if use_hier:
+            self.encoder_hier = HierarchicalEncoder(d_model=d_model, n_heads=n_heads, n_layers=max(1, n_layers//2), dropout=dropout)
+            self.encoder = None
+        else:
+            self.encoder = SpatialTemporalEncoder(d_model=d_model, n_heads=n_heads, n_layers=n_layers, dropout=dropout)
         self.decoder = PointerDecoder(d_model=d_model)
         self.top_k = dt_cfg.get('pointer_top_k', 32)
         self.temperature = float(dt_cfg.get('temperature', 1.0))
@@ -28,7 +35,15 @@ class DecisionTransformer(nn.Module):
                 returns_to_go = returns_to_go.unsqueeze(-1)
             rtg_feat = self.rtg_proj(returns_to_go)
             states = states + rtg_feat
-        enc = self.encoder(states)
+        if self.use_hier:
+            B, T, D = states.shape
+            half = max(1, T//2)
+            targets_seq = states[:, :half, :]
+            interceptors_seq = states[:, half:, :]
+            global_state = torch.mean(states, dim=1)
+            enc = self.encoder_hier(targets_seq, interceptors_seq, global_state)
+        else:
+            enc = self.encoder(states)
         assignments = self.decoder.decode(enc, enc, action_masks, top_k=self.top_k)
         return assignments
 
@@ -52,7 +67,15 @@ class DecisionTransformer(nn.Module):
                 returns_to_go = returns_to_go.unsqueeze(-1)
             rtg_feat = self.rtg_proj(returns_to_go)
             states = states + rtg_feat
-        enc = self.encoder(states)
+        if self.use_hier:
+            B, T, D = states.shape
+            half = max(1, T//2)
+            targets_seq = states[:, :half, :]
+            interceptors_seq = states[:, half:, :]
+            global_state = torch.mean(states, dim=1)
+            enc = self.encoder_hier(targets_seq, interceptors_seq, global_state)
+        else:
+            enc = self.encoder(states)
         combined = action_masks
         sb = self.state_bias(enc)
         logits = self.decoder.compute_logits(pairwise_tti, combined, state_bias=sb)

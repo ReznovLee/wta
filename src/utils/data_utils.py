@@ -124,6 +124,21 @@ def to_tensor_batch(episodes: List[Dict[str, Any]], max_len: int) -> Dict[str, A
                     type_hist[k] = float(np.sum(arr == k))
                 if nt > 0:
                     type_hist = type_hist / float(nt)
+            # threat potential and resource tightness
+            eps = 1e-3
+            tp_sum = 0.0
+            if tti is not None and isinstance(val, (list, np.ndarray)):
+                try:
+                    import numpy as np
+                    val_arr = np.asarray(val, dtype=float)
+                    if isinstance(tti, np.ndarray):
+                        for jidx in range(val_arr.shape[0]):
+                            mt = float(np.min(tti[:, jidx])) if tti.shape[0] > 0 else 0.0
+                            tp_sum += float(val_arr[jidx]) / (max(eps, mt))
+                except Exception:
+                    tp_sum = 0.0
+            ammo_mean2 = ammo_mean
+            tightness = float(tp_sum) / max(eps, ammo_mean2 + 1.0)
             feat = [
                 float(nt),
                 float(ni),
@@ -150,6 +165,8 @@ def to_tensor_batch(episodes: List[Dict[str, Any]], max_len: int) -> Dict[str, A
                 dist_mean,
                 dist_min,
                 dist_max,
+                float(tp_sum),
+                float(tightness),
             ] + list(type_hist.astype(float))
             if len(feat) < d_model:
                 feat = feat + [0.0] * (d_model - len(feat))
