@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: UTF-8 -*-
+import os
+from src.utils.runtime_env import configure_runtime
 """
 训练入口：HDT-IQL
 加载配置，构建环境/策略/训练器，先进行离线DT预训练，然后进行IQL强化学习。
 """
-import os
 import yaml
 from src.utils.logger import get_logger
 from src.algorithms.hdt_iql_trainer import HDTIQLTrainer
@@ -22,6 +23,7 @@ def load_yaml(path):
 def main():
     root = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.abspath(os.path.join(root, '..'))
+    configure_runtime()
     cfg_env = load_yaml(os.path.join(project_root, 'config', 'env.yaml'))
     cfg_reward = load_yaml(os.path.join(project_root, 'config', 'reward.yaml'))
     cfg_model = load_yaml(os.path.join(project_root, 'config', 'model.yaml'))
