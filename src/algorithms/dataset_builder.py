@@ -129,6 +129,7 @@ def build_offline_dataset(scenario_cfg: Dict[str, Any], data_cfg: Dict[str, Any]
     log_dir = os.path.join(project_root, 'experiments', 'results', 'logs')
     os.makedirs(log_dir, exist_ok=True)
     logger = get_logger('dataset_builder', os.path.join(log_dir, 'dataset_builder.log'))
+    logger.info('开始数据集生成流程')
 
     # 加载 env/reward/model 配置
     cfg_env = _load_yaml(os.path.join(project_root, 'config', 'env.yaml'))
@@ -170,6 +171,7 @@ def build_offline_dataset(scenario_cfg: Dict[str, Any], data_cfg: Dict[str, Any]
         # 依据场景配置调整 env_cfg
         env_cfg = _prepare_env_cfg(cfg_env, scenario_cfg, seed)
         env = WTAEnv(env_cfg, cfg_reward, cfg_model)
+        logger.info(f"开始生成 episode {ep_idx+1}/{num_episodes} | seed={seed}")
         obs = env.reset()
 
         steps: List[Dict[str, Any]] = []
@@ -203,8 +205,7 @@ def build_offline_dataset(scenario_cfg: Dict[str, Any], data_cfg: Dict[str, Any]
         index_manifest['episodes'].append({'id': ep_id, 'split': split, 'path': os.path.relpath(out_path, output_root), 'steps': len(steps)})
         index_manifest['stats']['total_steps'] += len(steps)
 
-        if (ep_idx + 1) % max(1, num_episodes // 10) == 0:
-            logger.info(f"已生成 {ep_idx+1}/{num_episodes} 个 episode，当前 split='{split}'，路径: {out_path}")
+        logger.info(f"完成 episode {ep_idx+1}/{num_episodes} | split='{split}' | steps={len(steps)} | 输出: {out_path}")
 
     # 写入索引文件
     with open(os.path.join(output_root, 'index.json'), 'w', encoding='UTF-8') as f:

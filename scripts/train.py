@@ -34,8 +34,9 @@ def main():
     os.makedirs(log_path, exist_ok=True)
     logger = get_logger('train', os.path.join(log_path, 'train.log'))
 
-    # 生成离线数据集（若不存在）
+    logger.info('开始生成离线数据集...')
     build_offline_dataset(cfg_data['scenario'], cfg_data, cfg_data['offline_dataset']['root'])
+    logger.info('离线数据集生成完成')
 
     # 构建环境与策略
     env = WTAEnv(cfg_env, cfg_reward, cfg_model)
@@ -49,7 +50,7 @@ def main():
     # IQL 强化学习阶段
     logger.info('开始 IQL 强化学习阶段...')
     buffer = ReplayBuffer(max_size=100000, seq_len=cfg_data['offline_dataset']['max_len'])
-    trainer.train_iql(env, buffer, total_steps=cfg_exp['training']['iql_steps'])
+    trainer.train_iql(env, buffer, total_steps=cfg_exp['training']['iql_steps'], log_interval=cfg_exp['training'].get('log_interval', 50))
 
     # 最终评估
     logger.info('开始评估...')

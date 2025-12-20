@@ -1,12 +1,12 @@
 # Data configuration
 offline_dataset:
   root: "data/trajectories"
-  format: "pt"
-  num_episodes: 500
-  max_len: 256
+  format: "npz"
+  num_episodes: 20
+  max_len: 128
 scenario:
-  seeds: [0, 1, 2, 3, 4]
-  time_to_impact: 1000
+  seeds: [0, 1]
+  time_to_impact: 300
   dispersion_rate: 0.6
 split:
   train: 0.8

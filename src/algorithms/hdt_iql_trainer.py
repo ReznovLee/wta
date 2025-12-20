@@ -36,6 +36,7 @@ class HDTIQLTrainer:
         return self.policy.pretrain_dt(dataset_loader=dl, epochs=offline_epochs)
 
     def train_iql(self, env, buffer, total_steps=1000, log_interval=100):
+        cfg_log = int(self.cfg.get('training', {}).get('log_interval', log_interval))
         obs = env.reset()
         ep_ret = 0.0
         ep_len = 0
@@ -85,7 +86,7 @@ class HDTIQLTrainer:
 
             # 周期性日志
             now = time.time()
-            if step % max(1, int(log_interval)) == 0 or (now - last_log_t) > 60:
+            if step % max(1, cfg_log) == 0 or (now - last_log_t) > 30:
                 avg_val = stats['value_loss'] / max(1, step)
                 avg_q = stats['critic_loss'] / max(1, step)
                 avg_pi = stats['actor_loss'] / max(1, step)
