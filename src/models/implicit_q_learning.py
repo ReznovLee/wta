@@ -43,6 +43,7 @@ class IQL:
         self.awr_beta = iql_cfg.get('awr_beta', 1.0)
         self.epsilon = float(iql_cfg.get('epsilon', 0.05))
         self.temperature = float(iql_cfg.get('temperature', 1.0))
+        self.device = torch.device('cuda' if TORCH_AVAILABLE and torch.cuda.is_available() and str(cfg.get('device', 'auto')) != 'cpu' else 'cpu')
         self.value = MLP(obs_dim, 1)
         self.qnet = MLP(obs_dim + act_dim, 1)
         if TORCH_AVAILABLE:
@@ -59,6 +60,10 @@ class IQL:
             self.v_opt = None
             self.q_opt = None
             self.pi_opt = None
+        if TORCH_AVAILABLE:
+            self.value.to(self.device)
+            self.qnet.to(self.device)
+            self.state_bias.to(self.device)
 
     def update_value(self, batch):
         if not TORCH_AVAILABLE:
@@ -256,7 +261,7 @@ class IQL:
             feat = feat + [0.0] * (256 - len(feat))
         else:
             feat = feat[:256]
-        return torch.tensor(feat, dtype=torch.float32)
+        return torch.tensor(feat, dtype=torch.float32, device=self.device)
 
     def _prepare_batch(self, batch):
         s_list = []
@@ -300,19 +305,19 @@ class IQL:
             d_list.append(done)
             s2_list.append(s2_feat)
         if len(s_list) == 0:
-            s = torch.zeros((1, 256), dtype=torch.float32)
-            a_idx = torch.zeros((1,), dtype=torch.long)
-            a_feat = torch.zeros((1, 4), dtype=torch.float32)
-            r = torch.zeros((1, 1), dtype=torch.float32)
-            d = torch.zeros((1, 1), dtype=torch.float32)
-            s2 = torch.zeros((1, 256), dtype=torch.float32)
+            s = torch.zeros((1, 256), dtype=torch.float32, device=self.device)
+            a_idx = torch.zeros((1,), dtype=torch.long, device=self.device)
+            a_feat = torch.zeros((1, 4), dtype=torch.float32, device=self.device)
+            r = torch.zeros((1, 1), dtype=torch.float32, device=self.device)
+            d = torch.zeros((1, 1), dtype=torch.float32, device=self.device)
+            s2 = torch.zeros((1, 256), dtype=torch.float32, device=self.device)
             return s, a_idx, a_feat, r, d, s2
-        s = torch.stack(s_list, dim=0)
-        a_idx = torch.tensor(a_idx_list, dtype=torch.long)
-        a_feat = torch.tensor(a_feat_list, dtype=torch.float32)
-        r = torch.tensor(r_list, dtype=torch.float32).view(-1, 1)
-        d = torch.tensor(d_list, dtype=torch.float32).view(-1, 1)
-        s2 = torch.stack(s2_list, dim=0)
+        s = torch.stack(s_list, dim=0).to(self.device)
+        a_idx = torch.tensor(a_idx_list, dtype=torch.long, device=self.device)
+        a_feat = torch.tensor(a_feat_list, dtype=torch.float32, device=self.device)
+        r = torch.tensor(r_list, dtype=torch.float32, device=self.device).view(-1, 1)
+        d = torch.tensor(d_list, dtype=torch.float32, device=self.device).view(-1, 1)
+        s2 = torch.stack(s2_list, dim=0).to(self.device)
         return s, a_idx, a_feat, r, d, s2
 
     def _prepare_actor_batch(self, batch):
@@ -335,10 +340,10 @@ class IQL:
                     continue
                 combined = m if combined is None else (combined & m)
             if isinstance(tti, np.ndarray):
-                tti_t = torch.tensor(tti, dtype=torch.float32)
+                tti_t = torch.tensor(tti, dtype=torch.float32, device=self.device)
             else:
-                tti_t = torch.tensor(tti, dtype=torch.float32)
-            mask_t = torch.tensor(combined, dtype=torch.bool) if combined is not None else torch.zeros_like(tti_t, dtype=torch.bool)
+                tti_t = torch.tensor(tti, dtype=torch.float32, device=self.device)
+            mask_t = torch.tensor(combined, dtype=torch.bool, device=self.device) if combined is not None else torch.zeros_like(tti_t, dtype=torch.bool)
             I, J = int(tti_t.shape[0]), int(tti_t.shape[1])
             pairwise_tti_list.append(tti_t)
             mask_list.append(mask_t)

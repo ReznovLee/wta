@@ -3,6 +3,11 @@ import os
 from typing import List, Dict, Optional
 
 import numpy as np
+try:
+    import torch
+    TORCH_AVAILABLE = True
+except Exception:
+    TORCH_AVAILABLE = False
 
 
 class PhysicsEngine:
@@ -43,6 +48,8 @@ class PhysicsEngine:
         self.defended_zone = self.env_cfg.get('defended_zone', {})
         self.motion_specs = self.env_cfg.get('motion_specs', {})
         self.tti_solver = self.env_cfg.get('tti_solver', {})
+        self.fast_mode = bool(self.tti_solver.get('fast_mode', False))
+        self.use_cuda = bool(self.env_cfg.get('use_cuda', False)) and TORCH_AVAILABLE and torch.cuda.is_available()
 
         # RNG（用于速度抖动与散布，可复现）
         self.seed = int(self.env_cfg.get('seed', 42))
@@ -186,6 +193,13 @@ class PhysicsEngine:
     def pairwise_distance(self, interceptors: List[Dict], targets: List[Dict]) -> np.ndarray:
         ni = len(interceptors)
         nt = len(targets)
+        if self.use_cuda:
+            ip = torch.tensor([interceptors[i].get('position', [0, 0, 0]) for i in range(ni)], dtype=torch.float32, device='cuda')
+            tp = torch.tensor([targets[j].get('position', [0, 0, 0]) for j in range(nt)], dtype=torch.float32, device='cuda')
+            ip = ip.unsqueeze(1).expand(ni, nt, 3)
+            tp = tp.unsqueeze(0).expand(ni, nt, 3)
+            d = torch.linalg.norm(tp - ip, dim=2)
+            return d.detach().cpu().numpy()
         dmat = np.zeros((ni, nt), dtype=float)
         for i in range(ni):
             ip = np.array(interceptors[i].get('position', [0, 0, 0]), dtype=float)
@@ -206,6 +220,18 @@ class PhysicsEngine:
     # TTI 数值估计（非直线目标 + 直线拦截器）
     # ------------------------------
     def estimate_intercept_time(self, interceptor: Dict, target: Dict) -> float:
+        if getattr(self, 'fast_mode', False):
+            ip0 = np.array(interceptor.get('position', [0, 0, 0]), dtype=float)
+            tp0 = np.array(target.get('position', [0, 0, 0]), dtype=float)
+            vi = float(interceptor.get('speed', float(self.weapon_specs.get('speed_mps', 300.0))))
+            intercept_radius = float(self.weapon_specs.get('intercept_radius_m', 50.0))
+            dist = float(np.linalg.norm(tp0 - ip0))
+            if vi <= 1e-9:
+                return float('inf')
+            t_est = max(0.0, (dist - intercept_radius) / vi)
+            t_defense = self.time_to_defended_zone(target)
+            t_max = min(self.max_time_solver, t_defense if np.isfinite(t_defense) else self.max_time_solver)
+            return t_est if t_est <= t_max else float('inf')
         # 支持蒙特卡洛 TTI 估计模式
         if getattr(self, 'tti_mode', 'deterministic') == 'monte_carlo':
             return self._estimate_intercept_time_monte_carlo(interceptor, target)
@@ -320,6 +346,28 @@ class PhysicsEngine:
         ni = len(interceptors)
         nt = len(targets)
         tti = np.zeros((ni, nt), dtype=float)
+        if getattr(self, 'fast_mode', False):
+            ir = float(self.weapon_specs.get('intercept_radius_m', 50.0))
+            if self.use_cuda:
+                ip = torch.tensor([interceptors[i].get('position', [0, 0, 0]) for i in range(ni)], dtype=torch.float32, device='cuda')
+                tp = torch.tensor([targets[j].get('position', [0, 0, 0]) for j in range(nt)], dtype=torch.float32, device='cuda')
+                vi = torch.tensor([float(interceptors[i].get('speed', float(self.weapon_specs.get('speed_mps', 300.0)))) for i in range(ni)], dtype=torch.float32, device='cuda')
+                ip_e = ip.unsqueeze(1).expand(ni, nt, 3)
+                tp_e = tp.unsqueeze(0).expand(ni, nt, 3)
+                d = torch.linalg.norm(tp_e - ip_e, dim=2)
+                vi_e = vi.unsqueeze(1).expand(ni, nt)
+                t_est = torch.clamp((d - ir) / torch.clamp(vi_e, min=1e-9), min=0.0)
+                return t_est.detach().cpu().numpy()
+            vi_arr = np.array([float(interceptors[i].get('speed', float(self.weapon_specs.get('speed_mps', 300.0)))) for i in range(ni)], dtype=float)
+            ip = np.array([interceptors[i].get('position', [0, 0, 0]) for i in range(ni)], dtype=float)
+            tp = np.array([targets[j].get('position', [0, 0, 0]) for j in range(nt)], dtype=float)
+            for i in range(ni):
+                for j in range(nt):
+                    d = float(np.linalg.norm(tp[j] - ip[i]))
+                    vi = max(1e-9, vi_arr[i])
+                    t_est = max(0.0, (d - ir) / vi)
+                    tti[i, j] = t_est
+            return tti
         for i in range(ni):
             for j in range(nt):
                 tti[i, j] = self.estimate_intercept_time(interceptors[i], targets[j])

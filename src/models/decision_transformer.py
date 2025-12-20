@@ -13,6 +13,7 @@ class DecisionTransformer(nn.Module):
         n_heads = dt_cfg.get('n_heads', 8)
         n_layers = dt_cfg.get('n_layers', 4)
         dropout = dt_cfg.get('dropout', 0.1)
+        self.device = torch.device('cuda' if torch.cuda.is_available() and str(cfg.get('device', 'auto')) != 'cpu' else 'cpu')
         use_hier = bool(cfg.get('encoder', {}).get('hierarchical_attention', False))
         self.use_hier = use_hier
         if use_hier:
@@ -26,6 +27,9 @@ class DecisionTransformer(nn.Module):
         self.state_bias = nn.Linear(d_model, 1)
         self.rtg_proj = nn.Linear(1, d_model)
         self.criterion = nn.CrossEntropyLoss()
+        for mod in [self.encoder_hier if use_hier else self.encoder, self.decoder, self.state_bias, self.rtg_proj]:
+            if mod is not None:
+                mod.to(self.device)
 
     def forward(self, states, returns_to_go, action_masks):
         if returns_to_go is not None:
@@ -35,6 +39,9 @@ class DecisionTransformer(nn.Module):
                 returns_to_go = returns_to_go.unsqueeze(-1)
             rtg_feat = self.rtg_proj(returns_to_go)
             states = states + rtg_feat
+        if not isinstance(states, torch.Tensor):
+            states = torch.tensor(states, dtype=torch.float32)
+        states = states.to(self.device)
         if self.use_hier:
             B, T, D = states.shape
             half = max(1, T//2)
@@ -67,6 +74,7 @@ class DecisionTransformer(nn.Module):
                 returns_to_go = returns_to_go.unsqueeze(-1)
             rtg_feat = self.rtg_proj(returns_to_go)
             states = states + rtg_feat
+        states = states.to(self.device)
         if self.use_hier:
             B, T, D = states.shape
             half = max(1, T//2)
