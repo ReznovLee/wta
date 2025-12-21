@@ -8,6 +8,9 @@ class RewardCalculator:
         self.zeta = float(self.cfg.get('zeta', 3.0))
         self.eta = float(self.cfg.get('eta', 1.0))
         self.unit_cost = float(self.cfg.get('unit_cost_coeff', 1.0))
+        self.delay_coeff = float(self.cfg.get('delay_coeff', 0.001))
+        self.violation_coeff = float(self.cfg.get('violation_coeff', 1.0))
+        self.miss_coeff = float(self.cfg.get('miss_coeff', 1.0))
 
     def compute_step_reward(self, assignments, outcomes, dt=1.0):
         hits_val = float(outcomes.get('hits_value_sum', 0.0))
@@ -23,9 +26,9 @@ class RewardCalculator:
         Rh = Rh * Ccoop
         Rv = -self.beta * float(late)
         Rc = -self.delta * self.unit_cost * float(shots)
-        Rdelay = -0.01 * delay
-        Rviol = -2.0 * float(violation)
-        Rmiss = -1.0 * float(miss)
+        Rdelay = -self.delay_coeff * delay
+        Rviol = -self.violation_coeff * float(violation)
+        Rmiss = -self.miss_coeff * float(miss)
         return float(Rh + Rv + Rc + Rdelay + Rviol + Rmiss)
 
     def compute_terminal_reward(self, summary):

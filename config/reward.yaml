@@ -1,12 +1,10 @@
-# Reward configuration (deterministic)
-weights:
-  hit: 1.0
-  miss: -1.0
-  violation: -2.0
-  delay_penalty_per_s: -0.01
-  resource_cost_per_shot: -0.1
-shaping:
-  distance_to_intercept_coeff: -0.001
-  priority_weight_coeff: 0.05
-terminal_bonus:
-  intercept_all: 3.0
+alpha: 3.0
+beta: 0.5
+delta: 0.02
+gamma: 0.99
+zeta: 8.0
+eta: 0.0
+unit_cost_coeff: 1.0
+delay_coeff: 0.001
+violation_coeff: 1.0
+miss_coeff: 1.0

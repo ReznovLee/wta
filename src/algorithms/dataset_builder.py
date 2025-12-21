@@ -236,20 +236,21 @@ def _mixed_expert_action(env, obs, masks, rng):
         return []
     tti = masks.get('pairwise_tti')
     if isinstance(tti, np.ndarray) and tti.shape == combined.shape:
-        # experts: shortest TTI, highest value
+        # experts: shortest TTI, highest value, prefer larger defense_time_gap
         vmap = {'ballistic': 3.0, 'cruise': 2.0, 'aircraft': 1.0}
         values = []
         for j, tgt in enumerate(env.state['targets']):
             values.append(vmap.get(str(tgt.get('type', 'cruise')), 1.0))
+        def_time = np.array([env.engine.time_to_defended_zone(t) for t in env.state['targets']], dtype=float)
         # random
-        if rng.rand() < 0.1:
+        if rng.rand() < 0.05:
             pick = idxs[rng.randint(0, idxs.shape[0])]
             return [(int(pick[0]), int(pick[1]))]
         # shortest TTI
         idxs_sorted_tti = sorted(idxs.tolist(), key=lambda ij: tti[ij[0], ij[1]])
         best_tti = idxs_sorted_tti[0]
         # highest value then tti
-        idxs_sorted_val = sorted(idxs.tolist(), key=lambda ij: (-values[ij[1]], tti[ij[0], ij[1]]))
+        idxs_sorted_val = sorted(idxs.tolist(), key=lambda ij: (-values[ij[1]], tti[ij[0], ij[1]], -def_time[ij[1]] if np.isfinite(def_time[ij[1]]) else 0.0))
         if rng.rand() < 0.5:
             i, j = best_tti
         else:

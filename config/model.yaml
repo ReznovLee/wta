@@ -10,9 +10,11 @@ encoder:
   use_relative_pos: true
   spatial_temporal_encoder: true
 iql:
-  actor_lr: 0.0003
-  critic_lr: 0.0003
+  actor_lr: 0.0001
+  critic_lr: 0.0001
   tau: 0.005
   discount: 0.99
-  expectile: 0.7
+  expectile: 0.5
   awr_beta: 1.0
+  epsilon: 0.1
+  temperature: 1.5
