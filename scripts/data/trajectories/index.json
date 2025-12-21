@@ -1,0 +1,131 @@
+{
+  "format": "npz",
+  "episodes": [
+    {
+      "id": "ep_000000",
+      "split": "train",
+      "path": "train\\ep_000000.npz",
+      "steps": 128
+    },
+    {
+      "id": "ep_000001",
+      "split": "train",
+      "path": "train\\ep_000001.npz",
+      "steps": 128
+    },
+    {
+      "id": "ep_000002",
+      "split": "train",
+      "path": "train\\ep_000002.npz",
+      "steps": 128
+    },
+    {
+      "id": "ep_000003",
+      "split": "train",
+      "path": "train\\ep_000003.npz",
+      "steps": 128
+    },
+    {
+      "id": "ep_000004",
+      "split": "train",
+      "path": "train\\ep_000004.npz",
+      "steps": 128
+    },
+    {
+      "id": "ep_000005",
+      "split": "train",
+      "path": "train\\ep_000005.npz",
+      "steps": 128
+    },
+    {
+      "id": "ep_000006",
+      "split": "train",
+      "path": "train\\ep_000006.npz",
+      "steps": 128
+    },
+    {
+      "id": "ep_000007",
+      "split": "train",
+      "path": "train\\ep_000007.npz",
+      "steps": 128
+    },
+    {
+      "id": "ep_000008",
+      "split": "train",
+      "path": "train\\ep_000008.npz",
+      "steps": 128
+    },
+    {
+      "id": "ep_000009",
+      "split": "train",
+      "path": "train\\ep_000009.npz",
+      "steps": 128
+    },
+    {
+      "id": "ep_000010",
+      "split": "train",
+      "path": "train\\ep_000010.npz",
+      "steps": 128
+    },
+    {
+      "id": "ep_000011",
+      "split": "train",
+      "path": "train\\ep_000011.npz",
+      "steps": 128
+    },
+    {
+      "id": "ep_000012",
+      "split": "train",
+      "path": "train\\ep_000012.npz",
+      "steps": 128
+    },
+    {
+      "id": "ep_000013",
+      "split": "train",
+      "path": "train\\ep_000013.npz",
+      "steps": 128
+    },
+    {
+      "id": "ep_000014",
+      "split": "train",
+      "path": "train\\ep_000014.npz",
+      "steps": 128
+    },
+    {
+      "id": "ep_000015",
+      "split": "train",
+      "path": "train\\ep_000015.npz",
+      "steps": 128
+    },
+    {
+      "id": "ep_000016",
+      "split": "val",
+      "path": "val\\ep_000016.npz",
+      "steps": 128
+    },
+    {
+      "id": "ep_000017",
+      "split": "val",
+      "path": "val\\ep_000017.npz",
+      "steps": 128
+    },
+    {
+      "id": "ep_000018",
+      "split": "val",
+      "path": "val\\ep_000018.npz",
+      "steps": 128
+    },
+    {
+      "id": "ep_000019",
+      "split": "val",
+      "path": "val\\ep_000019.npz",
+      "steps": 128
+    }
+  ],
+  "stats": {
+    "num_episodes": 20,
+    "train_count": 16,
+    "val_count": 4,
+    "total_steps": 2560
+  }
+}

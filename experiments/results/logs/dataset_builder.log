@@ -1,0 +1,48 @@
+2025-12-20 15:29:54 | INFO | dataset_builder | 开始数据集生成流程
+2025-12-20 15:29:56 | INFO | dataset_builder | 开始生成 episode 1/20 | seed=0
+2025-12-20 17:00:58 | INFO | dataset_builder | 完成 episode 1/20 | split='train' | steps=128 | 输出: data/trajectories\train\ep_000000.npz
+2025-12-20 17:00:58 | INFO | dataset_builder | 开始生成 episode 2/20 | seed=1
+2025-12-20 17:59:23 | INFO | dataset_builder | 完成 episode 2/20 | split='train' | steps=128 | 输出: data/trajectories\train\ep_000001.npz
+2025-12-20 17:59:23 | INFO | dataset_builder | 开始生成 episode 3/20 | seed=0
+2025-12-20 19:11:42 | INFO | dataset_builder | 开始数据集生成流程
+2025-12-20 19:11:43 | INFO | dataset_builder | 开始生成 episode 1/20 | seed=0
+2025-12-20 19:19:07 | INFO | dataset_builder | 完成 episode 1/20 | split='train' | steps=128 | 输出: data/trajectories\train\ep_000000.npz
+2025-12-20 19:19:07 | INFO | dataset_builder | 开始生成 episode 2/20 | seed=1
+2025-12-20 19:24:07 | INFO | dataset_builder | 完成 episode 2/20 | split='train' | steps=128 | 输出: data/trajectories\train\ep_000001.npz
+2025-12-20 19:24:07 | INFO | dataset_builder | 开始生成 episode 3/20 | seed=0
+2025-12-20 19:31:30 | INFO | dataset_builder | 完成 episode 3/20 | split='train' | steps=128 | 输出: data/trajectories\train\ep_000002.npz
+2025-12-20 19:31:30 | INFO | dataset_builder | 开始生成 episode 4/20 | seed=1
+2025-12-20 19:36:34 | INFO | dataset_builder | 完成 episode 4/20 | split='train' | steps=128 | 输出: data/trajectories\train\ep_000003.npz
+2025-12-20 19:36:34 | INFO | dataset_builder | 开始生成 episode 5/20 | seed=0
+2025-12-20 19:43:54 | INFO | dataset_builder | 完成 episode 5/20 | split='train' | steps=128 | 输出: data/trajectories\train\ep_000004.npz
+2025-12-20 19:43:54 | INFO | dataset_builder | 开始生成 episode 6/20 | seed=1
+2025-12-20 19:49:03 | INFO | dataset_builder | 完成 episode 6/20 | split='train' | steps=128 | 输出: data/trajectories\train\ep_000005.npz
+2025-12-20 19:49:03 | INFO | dataset_builder | 开始生成 episode 7/20 | seed=0
+2025-12-20 19:56:32 | INFO | dataset_builder | 完成 episode 7/20 | split='train' | steps=128 | 输出: data/trajectories\train\ep_000006.npz
+2025-12-20 19:56:32 | INFO | dataset_builder | 开始生成 episode 8/20 | seed=1
+2025-12-20 20:03:30 | INFO | dataset_builder | 完成 episode 8/20 | split='train' | steps=128 | 输出: data/trajectories\train\ep_000007.npz
+2025-12-20 20:03:30 | INFO | dataset_builder | 开始生成 episode 9/20 | seed=0
+2025-12-20 20:11:24 | INFO | dataset_builder | 完成 episode 9/20 | split='train' | steps=128 | 输出: data/trajectories\train\ep_000008.npz
+2025-12-20 20:11:24 | INFO | dataset_builder | 开始生成 episode 10/20 | seed=1
+2025-12-20 20:16:40 | INFO | dataset_builder | 完成 episode 10/20 | split='train' | steps=128 | 输出: data/trajectories\train\ep_000009.npz
+2025-12-20 20:16:40 | INFO | dataset_builder | 开始生成 episode 11/20 | seed=0
+2025-12-20 20:24:00 | INFO | dataset_builder | 完成 episode 11/20 | split='train' | steps=128 | 输出: data/trajectories\train\ep_000010.npz
+2025-12-20 20:24:00 | INFO | dataset_builder | 开始生成 episode 12/20 | seed=1
+2025-12-20 20:29:05 | INFO | dataset_builder | 完成 episode 12/20 | split='train' | steps=128 | 输出: data/trajectories\train\ep_000011.npz
+2025-12-20 20:29:05 | INFO | dataset_builder | 开始生成 episode 13/20 | seed=0
+2025-12-20 20:36:40 | INFO | dataset_builder | 完成 episode 13/20 | split='train' | steps=128 | 输出: data/trajectories\train\ep_000012.npz
+2025-12-20 20:36:40 | INFO | dataset_builder | 开始生成 episode 14/20 | seed=1
+2025-12-20 20:42:03 | INFO | dataset_builder | 完成 episode 14/20 | split='train' | steps=128 | 输出: data/trajectories\train\ep_000013.npz
+2025-12-20 20:42:03 | INFO | dataset_builder | 开始生成 episode 15/20 | seed=0
+2025-12-20 20:49:45 | INFO | dataset_builder | 完成 episode 15/20 | split='train' | steps=128 | 输出: data/trajectories\train\ep_000014.npz
+2025-12-20 20:49:45 | INFO | dataset_builder | 开始生成 episode 16/20 | seed=1
+2025-12-20 20:54:53 | INFO | dataset_builder | 完成 episode 16/20 | split='train' | steps=128 | 输出: data/trajectories\train\ep_000015.npz
+2025-12-20 20:54:53 | INFO | dataset_builder | 开始生成 episode 17/20 | seed=0
+2025-12-20 21:02:44 | INFO | dataset_builder | 完成 episode 17/20 | split='val' | steps=128 | 输出: data/trajectories\val\ep_000016.npz
+2025-12-20 21:02:44 | INFO | dataset_builder | 开始生成 episode 18/20 | seed=1
+2025-12-20 21:07:59 | INFO | dataset_builder | 完成 episode 18/20 | split='val' | steps=128 | 输出: data/trajectories\val\ep_000017.npz
+2025-12-20 21:07:59 | INFO | dataset_builder | 开始生成 episode 19/20 | seed=0
+2025-12-20 21:15:43 | INFO | dataset_builder | 完成 episode 19/20 | split='val' | steps=128 | 输出: data/trajectories\val\ep_000018.npz
+2025-12-20 21:15:43 | INFO | dataset_builder | 开始生成 episode 20/20 | seed=1
+2025-12-20 21:20:59 | INFO | dataset_builder | 完成 episode 20/20 | split='val' | steps=128 | 输出: data/trajectories\val\ep_000019.npz
+2025-12-20 21:20:59 | INFO | dataset_builder | 数据集生成完成：episodes=20, total_steps=2560, 格式='npz'
