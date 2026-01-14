@@ -75,6 +75,8 @@ class DecisionTransformer(nn.Module):
             rtg_feat = self.rtg_proj(returns_to_go)
             states = states + rtg_feat
         states = states.to(self.device)
+        action_masks = action_masks.to(self.device)
+        pairwise_tti = pairwise_tti.to(self.device)
         if self.use_hier:
             B, T, D = states.shape
             half = max(1, T//2)

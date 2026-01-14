@@ -62,20 +62,21 @@ class PointerDecoder(nn.Module):
         return idx[:min(top_k, idx.shape[0])]
 
     def compute_logits(self, pairwise_tti, combined_mask, state_bias=None):
+        device = self.alpha.device if hasattr(self, 'alpha') else (pairwise_tti.device if isinstance(pairwise_tti, torch.Tensor) else torch.device('cpu'))
         if not isinstance(pairwise_tti, torch.Tensor):
-            pairwise_tti = torch.tensor(pairwise_tti, dtype=torch.float32)
+            pairwise_tti = torch.tensor(pairwise_tti, dtype=torch.float32, device=device)
         if not isinstance(combined_mask, torch.Tensor):
-            combined_mask = torch.tensor(combined_mask, dtype=torch.bool)
+            combined_mask = torch.tensor(combined_mask, dtype=torch.bool, device=device)
         if pairwise_tti.dim() == 4:
             B, T, I, J = pairwise_tti.shape
             logits = -(self.alpha * pairwise_tti) + self.bias
             if state_bias is not None:
                 if not isinstance(state_bias, torch.Tensor):
-                    state_bias = torch.tensor(state_bias, dtype=torch.float32)
+                    state_bias = torch.tensor(state_bias, dtype=torch.float32, device=device)
                 logits = logits + state_bias.view(B, T, 1, 1)
             logits = logits.view(B, T, I * J)
             mask = combined_mask.view(B, T, I * J)
-            neg_inf = torch.tensor(-1e9, dtype=logits.dtype, device=logits.device)
+            neg_inf = torch.tensor(-1e9, dtype=logits.dtype, device=device)
             logits = torch.where(mask, logits, neg_inf)
             return logits
         elif pairwise_tti.dim() == 2:
@@ -83,11 +84,11 @@ class PointerDecoder(nn.Module):
             logits = -(self.alpha * pairwise_tti) + self.bias
             if state_bias is not None:
                 if not isinstance(state_bias, torch.Tensor):
-                    state_bias = torch.tensor(state_bias, dtype=torch.float32)
+                    state_bias = torch.tensor(state_bias, dtype=torch.float32, device=device)
                 logits = logits + state_bias.view(1, 1)
             logits = logits.view(1, 1, I * J)
             mask = combined_mask.view(1, 1, I * J)
-            neg_inf = torch.tensor(-1e9, dtype=logits.dtype, device=logits.device)
+            neg_inf = torch.tensor(-1e9, dtype=logits.dtype, device=device)
             logits = torch.where(mask, logits, neg_inf)
             return logits
         else:
