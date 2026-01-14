@@ -343,11 +343,12 @@ class WTAEnv:
         pair_tti = self.engine.pairwise_tti(s['interceptors'], s['targets'])
         t_defense = np.array([self.engine.time_to_defended_zone(t) for t in s['targets']], dtype=float)
         defense_time_mask = np.zeros((num_i, num_j), dtype=bool)
+        slack = float(self.env_cfg.get('defense_time_slack', 0.2))
         for i in range(num_i):
             for j in range(num_j):
                 td = t_defense[j]
                 tij = pair_tti[i, j]
-                defense_time_mask[i, j] = np.isfinite(td) and np.isfinite(tij) and (tij <= td)
+                defense_time_mask[i, j] = np.isfinite(td) and np.isfinite(tij) and (tij <= td * (1.0 + slack))
         base_masks['defense_time_mask'] = defense_time_mask
         # 将已经计算好的 pairwise_tti 暴露出去，便于上层策略/脚本直接复用
         base_masks['pairwise_tti'] = pair_tti

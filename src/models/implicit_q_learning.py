@@ -155,7 +155,19 @@ class IQL:
         combined = assign & alive & range_mask & capacity & defense & ammo
         idxs = np.argwhere(combined)
         if idxs.size == 0:
-            return []
+            base2 = assign & alive & range_mask & capacity & ammo if assign is not None else None
+            if base2 is None:
+                return []
+            idxs2 = np.argwhere(base2)
+            if idxs2.size == 0:
+                return []
+            tti2 = masks.get('pairwise_tti')
+            if isinstance(tti2, np.ndarray) and tti2.shape == base2.shape:
+                idxs_sorted2 = sorted(idxs2.tolist(), key=lambda ij: tti2[ij[0], ij[1]])
+                i2, j2 = idxs_sorted2[0]
+                return [(int(i2), int(j2))]
+            i2, j2 = idxs2[0]
+            return [(int(i2), int(j2))]
 
         tti = masks.get('pairwise_tti')
         if isinstance(tti, np.ndarray) and tti.shape == combined.shape:

@@ -145,5 +145,21 @@ class DecisionTransformer(nn.Module):
             i = int(idx // J)
             j = int(idx % J)
         else:
-            i, j = idx[0].tolist()
+            if idx.numel() == 0:
+                m2 = None
+                for mn in ['assign_mask', 'ammo_mask', 'range_mask', 'alive_mask', 'capacity_mask']:
+                    m = masks.get(mn)
+                    if m is None:
+                        continue
+                    m = torch.tensor(m) if not isinstance(m, torch.Tensor) else m
+                    m = m.bool()
+                    m2 = m if m2 is None else (m2 & m)
+                if m2 is None:
+                    return []
+                id2 = torch.nonzero(m2)
+                if id2.numel() == 0:
+                    return []
+                i, j = id2[0].tolist()
+            else:
+                i, j = idx[0].tolist()
         return [(i, j)]
