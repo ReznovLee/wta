@@ -43,18 +43,25 @@ class IQL:
         self.awr_beta = iql_cfg.get('awr_beta', 1.0)
         self.epsilon = float(iql_cfg.get('epsilon', 0.05))
         self.temperature = float(iql_cfg.get('temperature', 1.0))
+        self.tau = float(iql_cfg.get('tau', 0.005))
         self.device = torch.device('cuda' if TORCH_AVAILABLE and torch.cuda.is_available() and str(cfg.get('device', 'auto')) != 'cpu' else 'cpu')
         self.value = MLP(obs_dim, 1)
         self.qnet = MLP(obs_dim + act_dim, 1)
+        self.qnet2 = MLP(obs_dim + act_dim, 1)
+        self.target_qnet1 = MLP(obs_dim + act_dim, 1)
+        self.target_qnet2 = MLP(obs_dim + act_dim, 1)
         if TORCH_AVAILABLE:
             self.alpha = nn.Parameter(torch.tensor(1.0))
             self.state_bias = nn.Linear(obs_dim, 1)
+            # Initialize target networks
+            self.target_qnet1.load_state_dict(self.qnet.state_dict())
+            self.target_qnet2.load_state_dict(self.qnet2.state_dict())
         else:
             self.alpha = None
             self.state_bias = None
         if TORCH_AVAILABLE:
             self.v_opt = optim.Adam(self.value.parameters(), lr=iql_cfg.get('critic_lr', 3e-4))
-            self.q_opt = optim.Adam(self.qnet.parameters(), lr=iql_cfg.get('critic_lr', 3e-4))
+            self.q_opt = optim.Adam(list(self.qnet.parameters()) + list(self.qnet2.parameters()), lr=iql_cfg.get('critic_lr', 3e-4))
             self.pi_opt = optim.Adam(list(self.state_bias.parameters()) + [self.alpha], lr=iql_cfg.get('actor_lr', 3e-4))
         else:
             self.v_opt = None
@@ -63,13 +70,23 @@ class IQL:
         if TORCH_AVAILABLE:
             self.value.to(self.device)
             self.qnet.to(self.device)
+            self.qnet2.to(self.device)
+            self.target_qnet1.to(self.device)
+            self.target_qnet2.to(self.device)
             self.state_bias.to(self.device)
+
+    def soft_update(self, target, source):
+        for t, s in zip(target.parameters(), source.parameters()):
+            t.data.copy_(t.data * (1.0 - self.tau) + s.data * self.tau)
 
     def update_value(self, batch):
         if not TORCH_AVAILABLE:
             return {'value_loss': 0.0}
         s, a_idx, a_feat, r, d, s2 = self._prepare_batch(batch)
-        q = self.qnet(torch.cat([s, a_feat], dim=1)).detach()
+        with torch.no_grad():
+            q1 = self.target_qnet1(torch.cat([s, a_feat], dim=1))
+            q2 = self.target_qnet2(torch.cat([s, a_feat], dim=1))
+            q = torch.min(q1, q2)
         v = self.value(s)
         err = q - v
         w = torch.abs(torch.where(err < 0, torch.tensor(1.0 - self.expectile, device=err.device), torch.tensor(self.expectile, device=err.device)))
@@ -86,11 +103,15 @@ class IQL:
         with torch.no_grad():
             v2 = self.value(s2)
             y = r + (1.0 - d) * self.discount * v2
-        q = self.qnet(torch.cat([s, a_feat], dim=1))
-        loss = torch.mean((q - y).pow(2))
+        q1 = self.qnet(torch.cat([s, a_feat], dim=1))
+        q2 = self.qnet2(torch.cat([s, a_feat], dim=1))
+        loss = torch.mean((q1 - y).pow(2)) + torch.mean((q2 - y).pow(2))
         self.q_opt.zero_grad()
         loss.backward()
         self.q_opt.step()
+        # Soft update target networks
+        self.soft_update(self.target_qnet1, self.qnet)
+        self.soft_update(self.target_qnet2, self.qnet2)
         return {'critic_loss': float(loss.detach().cpu().item())}
 
     def update_actor(self, batch):
@@ -98,7 +119,10 @@ class IQL:
             return {'actor_loss': 0.0}
         s, a_idx, a_feat, r, d, s2, pairwise_tti_list, mask_list, IJ_list = self._prepare_actor_batch(batch)
         with torch.no_grad():
-            q = self.qnet(torch.cat([s, a_feat], dim=1))
+            # Use target networks for stable advantage calculation
+            q1 = self.target_qnet1(torch.cat([s, a_feat], dim=1))
+            q2 = self.target_qnet2(torch.cat([s, a_feat], dim=1))
+            q = torch.min(q1, q2)
             v = self.value(s)
             adv = q - v
             w = torch.exp(self.awr_beta * adv).clamp(max=100.0)

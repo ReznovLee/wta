@@ -115,17 +115,35 @@ class HDTIQLTrainer:
 
         return {'steps': total_steps, 'episodes': episodes}
 
-    def evaluate(self, env, episodes=5):
+    def evaluate(self, env, episodes=5, target_return=None):
         totals = []
+        target_met = 0
         for ep in range(episodes):
             obs = env.reset()
             ep_ret = 0.0
             done = False
+            
+            # Initialize running return-to-go
+            running_rtg = float(target_return) if target_return is not None else None
+            
             while not done:
                 masks = env.get_action_masks()
-                action = self.policy.act(obs, masks)
+                action = self.policy.act(obs, masks, target_return=running_rtg)
                 obs, reward, done, info = env.step(action)
                 ep_ret += reward
+                
+                if running_rtg is not None:
+                    running_rtg -= reward
+
             totals.append(ep_ret)
+            if target_return is not None and ep_ret >= target_return:
+                target_met += 1
+
             self.logger.info(f"Eval Episode {ep+1}/{episodes} return={ep_ret:.3f}")
-        return {'avg_return': sum(totals)/len(totals) if totals else 0.0}
+        
+        avg = sum(totals)/len(totals) if totals else 0.0
+        metrics = {'avg_return': avg}
+        if target_return is not None:
+            metrics['target_success_rate'] = target_met / episodes
+            metrics['avg_gap'] = avg - target_return
+        return metrics

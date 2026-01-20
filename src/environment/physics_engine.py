@@ -121,7 +121,8 @@ class PhysicsEngine:
     # ------------------------------
     # 运动推进（一步）
     # ------------------------------
-    def propagate(self, targets: List[Dict], dt: float):
+    def propagate(self, targets: List[Dict], interceptors: List[Dict], dt: float):
+        # 1. Update Targets
         for t in targets:
             # 若存在全局 trajectories 映射且目标未绑定轨迹，按 id 自动绑定一次
             tid = t.get('id', None)
@@ -187,6 +188,127 @@ class PhysicsEngine:
                 # 模型推进
                 self._advance_target_state(t, dt)
 
+        # 2. Update Interceptors
+        for itc in interceptors:
+            if itc.get('status') == 'flying':
+                target_id = itc.get('target_id')
+                # Find target
+                target = None
+                for t in targets:
+                    if t.get('id') == target_id:
+                        target = t
+                        break
+                
+                if target and target.get('alive', True):
+                    self._update_interceptor_dynamics(itc, target, dt)
+                else:
+                    # Target lost or dead
+                    itc['status'] = 'miss'
+
+    def _step_interceptor_dynamics_pure(self, pos_m: np.ndarray, vel_m: np.ndarray, 
+                                      pos_t: np.ndarray, vel_t: np.ndarray, 
+                                      dt: float, speed_limit: float) -> (np.ndarray, np.ndarray):
+        """
+        纯函数形式的拦截器动力学步进 (PN 制导)
+        返回: (next_position, next_velocity)
+        """
+        # Constants
+        N_pn = self.pn_constant
+        max_acc_g = self.max_acc_g
+        g = np.array([0, 0, -9.81])
+        
+        # Relative states
+        r_vec = pos_t - pos_m
+        r = np.linalg.norm(r_vec)
+        # Avoid division by zero
+        if r < 1e-3:
+            return pos_m, vel_m
+
+        v_rel = vel_t - vel_m 
+        
+        # PN Guidance Law
+        cross_prod = np.cross(r_vec, v_rel)
+        r2 = r**2 + 1e-9
+        omega_vec = cross_prod / r2
+        
+        acc_cmd = N_pn * np.cross(v_rel, omega_vec)
+        
+        # Limit acceleration
+        max_acc = max_acc_g * 9.81
+        acc_norm = np.linalg.norm(acc_cmd)
+        if acc_norm > max_acc:
+            acc_cmd = acc_cmd / acc_norm * max_acc
+            
+        # Update Velocity (Euler integration)
+        acc_total = acc_cmd + g
+        vel_new = vel_m + acc_total * dt
+        
+        # Enforce constant speed
+        v_norm = np.linalg.norm(vel_new)
+        if v_norm > 1e-9:
+            vel_new = vel_new / v_norm * speed_limit
+            
+        pos_new = pos_m + vel_new * dt
+        return pos_new, vel_new
+
+    def _update_interceptor_dynamics(self, interceptor: Dict, target: Dict, dt: float):
+        # Constants from config
+        pos_m = np.array(interceptor.get('position', [0,0,0]), dtype=float)
+        vel_m = np.array(interceptor.get('velocity', [0,0,0]), dtype=float)
+        pos_t = np.array(target.get('position', [0,0,0]), dtype=float)
+        vel_t = np.array(target.get('velocity', [0,0,0]), dtype=float)
+        speed = float(interceptor.get('speed', 300.0))
+        max_flight_time = float(self.weapon_specs.get('max_flight_time_s', 120.0))
+
+        # Track flight time
+        current_flight_time = float(interceptor.get('flight_time', 0.0))
+        current_flight_time += dt
+        interceptor['flight_time'] = current_flight_time
+
+        if current_flight_time > max_flight_time:
+            interceptor['status'] = 'miss'
+            return
+            
+        # Track flight distance
+        vel_norm = np.linalg.norm(vel_m)
+        dist_step = vel_norm * dt
+        current_flight_dist = float(interceptor.get('flight_dist', 0.0))
+        current_flight_dist += dist_step
+        interceptor['flight_dist'] = current_flight_dist
+        
+        max_range_m = float(self.weapon_specs.get('max_range_km', 100.0)) * 1000.0
+        if current_flight_dist > max_range_m:
+             interceptor['status'] = 'miss'
+             return
+
+        
+        # Check hit logic is handled outside or before pure dynamics
+        # Here we just check radius for 'hit' status update if not already handled
+        r_vec = pos_t - pos_m
+        r = np.linalg.norm(r_vec)
+        radius = float(self.weapon_specs.get('intercept_radius_m', 50.0))
+        
+        if r <= radius:
+            interceptor['status'] = 'hit'
+            interceptor['position'] = pos_t 
+            return
+
+        # Use pure dynamics
+        pos_new, vel_new = self._step_interceptor_dynamics_pure(pos_m, vel_m, pos_t, vel_t, dt, speed)
+        
+        # Update state
+        interceptor['position'] = pos_new
+        interceptor['velocity'] = vel_new
+        
+        # Check miss condition: moving away from target
+        # Re-calculate r_vec, v_rel with new states or old? 
+        # Usually check based on current state before update, or after.
+        # Let's keep consistency with old logic: check miss based on state BEFORE update?
+        # Actually, the old logic used r_vec (old) and v_rel (old).
+        v_rel = vel_t - vel_m
+        if np.dot(r_vec, v_rel) > 0 and r > radius * 3.0:
+             interceptor['status'] = 'miss'
+
     # ------------------------------
     # 成对距离与射程
     # ------------------------------
@@ -225,122 +347,146 @@ class PhysicsEngine:
             tp0 = np.array(target.get('position', [0, 0, 0]), dtype=float)
             vi = float(interceptor.get('speed', float(self.weapon_specs.get('speed_mps', 300.0))))
             intercept_radius = float(self.weapon_specs.get('intercept_radius_m', 50.0))
+            max_flight_time = float(self.weapon_specs.get('max_flight_time_s', 120.0))
+            current_flight_time = float(interceptor.get('flight_time', 0.0))
+            remaining_time = max(0.0, max_flight_time - current_flight_time)
+            
             dist = float(np.linalg.norm(tp0 - ip0))
-            if vi <= 1e-9:
+            if vi <= 1e-9 or remaining_time <= 1e-9:
                 return float('inf')
             t_est = max(0.0, (dist - intercept_radius) / vi)
+            if t_est > remaining_time:
+                return float('inf')
+                
             t_defense = self.time_to_defended_zone(target)
             t_max = min(self.max_time_solver, t_defense if np.isfinite(t_defense) else self.max_time_solver)
             return t_est if t_est <= t_max else float('inf')
+            
         # 支持蒙特卡洛 TTI 估计模式
         if getattr(self, 'tti_mode', 'deterministic') == 'monte_carlo':
             return self._estimate_intercept_time_monte_carlo(interceptor, target)
+            
+        # 初始化状态
         ip0 = np.array(interceptor.get('position', [0, 0, 0]), dtype=float)
-        tp0 = np.array(target.get('position', [0, 0, 0]), dtype=float)
-        vi = float(interceptor.get('speed', float(self.weapon_specs.get('speed_mps', 300.0))))
+        speed = float(interceptor.get('speed', float(self.weapon_specs.get('speed_mps', 300.0))))
         intercept_radius = float(self.weapon_specs.get('intercept_radius_m', 50.0))
-
-        # 瞄准模式：impact_point（固定），defense_center（固定），predicted_future（随 t 变化）
-        aim_mode = str(getattr(self, 'aim_mode', 'predicted_future'))
-        if vi <= 1e-9:
+        max_flight_time = float(self.weapon_specs.get('max_flight_time_s', 120.0))
+        current_flight_time = float(interceptor.get('flight_time', 0.0))
+        remaining_time = max(0.0, max_flight_time - current_flight_time)
+        
+        if speed <= 1e-9 or remaining_time <= 1e-9:
             return float('inf')
-        if aim_mode in ('impact_point', 'defense_center'):
-            if aim_mode == 'impact_point':
-                aim_point = np.array(target.get('impact_point', tp0), dtype=float)
-            else:
-                aim_point = self._get_defense_center(target)
-            d0 = aim_point - ip0
+            
+        # 初始速度向量
+        vel_m = np.array(interceptor.get('velocity', [0,0,0]), dtype=float)
+        if np.linalg.norm(vel_m) < 1e-3:
+            # 未发射，假设初始朝向目标当前位置
+            tp0 = np.array(target.get('position', [0, 0, 0]), dtype=float)
+            d0 = tp0 - ip0
             d0_norm = np.linalg.norm(d0)
-            if d0_norm <= 1e-9:
-                return float('inf')
-            u_fixed = d0 / d0_norm
-        else:
-            u_fixed = None  # predicted_future 模式下每个 t 动态计算 u_hat(t)
-
-        # 最大搜索时间：不超过 solver.max_time，也不超过目标到达防御区时间
-        t_defense = self.time_to_defended_zone(target)
-        t_max = min(self.max_time_solver, t_defense if np.isfinite(t_defense) else self.max_time_solver)
-
-        # 数值步进搜索首次拦截时刻
+            if d0_norm < 1e-3:
+                return 0.0 # 就在脸上
+            vel_m = d0 / d0_norm * speed
+            
+        sim_pos_m = ip0.copy()
+        sim_vel_m = vel_m.copy()
+        
+        # 模拟参数
+        t_max = min(self.max_time_solver, remaining_time)
+        dt = self.dt_solver
         t = 0.0
+        
+        # 目标防御区时间限制
+        t_defense = self.time_to_defended_zone(target)
+        if np.isfinite(t_defense):
+            t_max = min(t_max, t_defense)
+            
         while t <= t_max:
-            # 目标未来预测：优先 EKF 接口，其次用模型模拟
-            pos_pred, vel_pred = self._predict_future_with_ekf_or_model(target, tau=t)
-            # 拦截器位置（直线）：根据 aim_mode 选择固定或动态的瞄准方向
-            if u_fixed is not None:
-                pi_t = ip0 + vi * u_fixed * t
-            else:
-                d_vec = pos_pred - ip0
-                d_norm = np.linalg.norm(d_vec)
-                if d_norm <= 1e-9:
-                    # 目标与拦截器重合，直接命中
-                    return t
-                u_hat_t = d_vec / d_norm
-                pi_t = ip0 + vi * u_hat_t * t
-            # 距离与判定
-            dist = float(np.linalg.norm(pos_pred - pi_t))
+            # 获取目标当前时刻状态预测
+            pos_t, vel_t = self._predict_future_with_ekf_or_model(target, tau=t)
+            
+            # 判定距离
+            dist = float(np.linalg.norm(pos_t - sim_pos_m))
             if dist <= intercept_radius:
                 return t
-            t += self.dt_solver
+                
+            # 步进拦截器 (PN 制导)
+            sim_pos_m, sim_vel_m = self._step_interceptor_dynamics_pure(
+                sim_pos_m, sim_vel_m, pos_t, vel_t, dt, speed
+            )
+            
+            t += dt
+            
         return float('inf')
 
     def _estimate_intercept_time_monte_carlo(self, interceptor: Dict, target: Dict) -> float:
         """蒙特卡洛 TTI 估计：在未来预测上叠加高斯扰动，统计若干样本的拦截时间均值。"""
+        # 初始化状态
         ip0 = np.array(interceptor.get('position', [0, 0, 0]), dtype=float)
-        tp0 = np.array(target.get('position', [0, 0, 0]), dtype=float)
-        vi = float(interceptor.get('speed', float(self.weapon_specs.get('speed_mps', 300.0))))
+        speed = float(interceptor.get('speed', float(self.weapon_specs.get('speed_mps', 300.0))))
         intercept_radius = float(self.weapon_specs.get('intercept_radius_m', 50.0))
-
-        if vi <= 1e-9:
+        max_flight_time = float(self.weapon_specs.get('max_flight_time_s', 120.0))
+        current_flight_time = float(interceptor.get('flight_time', 0.0))
+        remaining_time = max(0.0, max_flight_time - current_flight_time)
+        
+        if speed <= 1e-9 or remaining_time <= 1e-9:
             return float('inf')
-        aim_mode = str(getattr(self, 'aim_mode', 'predicted_future'))
-        if aim_mode in ('impact_point', 'defense_center'):
-            if aim_mode == 'impact_point':
-                aim_point = np.array(target.get('impact_point', tp0), dtype=float)
-            else:
-                aim_point = self._get_defense_center(target)
-            d0 = aim_point - ip0
+            
+        # 初始速度向量
+        vel_m_init = np.array(interceptor.get('velocity', [0,0,0]), dtype=float)
+        if np.linalg.norm(vel_m_init) < 1e-3:
+            tp0 = np.array(target.get('position', [0, 0, 0]), dtype=float)
+            d0 = tp0 - ip0
             d0_norm = np.linalg.norm(d0)
-            if d0_norm <= 1e-9:
-                return float('inf')
-            u_fixed = d0 / d0_norm
-        else:
-            u_fixed = None  # predicted_future：每个 t 动态计算瞄准方向
-
+            if d0_norm < 1e-3:
+                return 0.0
+            vel_m_init = d0 / d0_norm * speed
+            
         t_defense = self.time_to_defended_zone(target)
-        t_max = min(self.max_time_solver, t_defense if np.isfinite(t_defense) else self.max_time_solver)
+        t_max = min(self.max_time_solver, remaining_time)
+        if np.isfinite(t_defense):
+            t_max = min(t_max, t_defense)
+            
+        dt = self.dt_solver
 
         n = max(1, int(getattr(self, 'mc_samples', 20)))
         noise_std = float(getattr(self, 'mc_noise_std', 50.0))
-        samples = []
+        
+        sum_tti = 0.0
+        valid_samples = 0
+        
         for k in range(n):
+            sim_pos_m = ip0.copy()
+            sim_vel_m = vel_m_init.copy()
             t = 0.0
-            tti_k = float('inf')
+            found = False
+            
             while t <= t_max:
-                pos_pred, _ = self._predict_future_with_ekf_or_model(target, tau=t)
+                pos_t, vel_t = self._predict_future_with_ekf_or_model(target, tau=t)
+                
+                # Add noise
                 if noise_std > 1e-9:
-                    pos_pred = pos_pred + self.rng.normal(0.0, noise_std, size=3)
-                # 拦截器位置：固定或动态瞄准
-                if u_fixed is not None:
-                    pi_t = ip0 + vi * u_fixed * t
-                else:
-                    d_vec = pos_pred - ip0
-                    d_norm = np.linalg.norm(d_vec)
-                    if d_norm <= 1e-9:
-                        tti_k = t
-                        break
-                    u_hat_t = d_vec / d_norm
-                    pi_t = ip0 + vi * u_hat_t * t
-                dist = float(np.linalg.norm(pos_pred - pi_t))
+                    noise = self.rng.normal(0.0, noise_std, size=3)
+                    pos_t = pos_t + noise
+                
+                dist = float(np.linalg.norm(pos_t - sim_pos_m))
                 if dist <= intercept_radius:
-                    tti_k = t
+                    sum_tti += t
+                    valid_samples += 1
+                    found = True
                     break
-                t += self.dt_solver
-            samples.append(tti_k)
-        finite = [x for x in samples if np.isfinite(x)]
-        if len(finite) == 0:
+                    
+                sim_pos_m, sim_vel_m = self._step_interceptor_dynamics_pure(
+                    sim_pos_m, sim_vel_m, pos_t, vel_t, dt, speed
+                )
+                t += dt
+            
+            if not found:
+                pass
+ 
+        if valid_samples == 0:
             return float('inf')
-        return float(np.mean(finite))
+        return sum_tti / valid_samples
 
     def pairwise_tti(self, interceptors: List[Dict], targets: List[Dict]) -> np.ndarray:
         ni = len(interceptors)

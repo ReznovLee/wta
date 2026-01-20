@@ -45,7 +45,9 @@ class HDTIQLPolicy:
     def improve_with_iql(self, replay_buffer=None, steps=1000):
         return {'iql_steps': steps}
 
-    def act(self, obs, masks):
+    def act(self, obs, masks, target_return=None):
+        if target_return is not None and self.dt is not None:
+            return self.dt.sample_action(obs, returns_to_go=target_return, masks=masks)
         return self.iql.act(obs, masks)
 
     def save(self, path):
