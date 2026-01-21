@@ -54,36 +54,38 @@ class HDTIQLPolicy:
         try:
             import os
             import torch
-            os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
-            payload = {}
-            if self.dt is not None:
-                payload['dt'] = self.dt.state_dict()
-            if hasattr(self.iql, 'value'):
-                payload['iql_value'] = getattr(self.iql.value, 'state_dict', lambda: {})()
-            if hasattr(self.iql, 'qnet'):
-                payload['iql_qnet'] = getattr(self.iql.qnet, 'state_dict', lambda: {})()
-            if hasattr(self.iql, 'state_bias') and self.iql.state_bias is not None:
-                payload['iql_state_bias'] = self.iql.state_bias.state_dict()
-            if hasattr(self.iql, 'alpha') and self.iql.alpha is not None:
-                payload['iql_alpha'] = self.iql.alpha.detach().cpu()
-            torch.save(payload, path)
-        except Exception:
+        except ImportError:
             return
+
+        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+        payload = {}
+        if self.dt is not None:
+            payload['dt'] = self.dt.state_dict()
+        if hasattr(self.iql, 'value'):
+            payload['iql_value'] = getattr(self.iql.value, 'state_dict', lambda: {})()
+        if hasattr(self.iql, 'qnet'):
+            payload['iql_qnet'] = getattr(self.iql.qnet, 'state_dict', lambda: {})()
+        if hasattr(self.iql, 'state_bias') and self.iql.state_bias is not None:
+            payload['iql_state_bias'] = self.iql.state_bias.state_dict()
+        if hasattr(self.iql, 'alpha') and self.iql.alpha is not None:
+            payload['iql_alpha'] = self.iql.alpha.detach().cpu()
+        torch.save(payload, path)
 
     def load(self, path):
         try:
             import torch
-            payload = torch.load(path, map_location='cpu')
-            if self.dt is not None and 'dt' in payload:
-                self.dt.load_state_dict(payload['dt'])
-            if hasattr(self.iql, 'value') and 'iql_value' in payload:
-                self.iql.value.load_state_dict(payload['iql_value'])
-            if hasattr(self.iql, 'qnet') and 'iql_qnet' in payload:
-                self.iql.qnet.load_state_dict(payload['iql_qnet'])
-            if hasattr(self.iql, 'state_bias') and self.iql.state_bias is not None and 'iql_state_bias' in payload:
-                self.iql.state_bias.load_state_dict(payload['iql_state_bias'])
-            if hasattr(self.iql, 'alpha') and self.iql.alpha is not None and 'iql_alpha' in payload:
-                with torch.no_grad():
-                    self.iql.alpha.copy_(payload['iql_alpha'])
-        except Exception:
+        except ImportError:
             return
+
+        payload = torch.load(path, map_location='cpu')
+        if self.dt is not None and 'dt' in payload:
+            self.dt.load_state_dict(payload['dt'])
+        if hasattr(self.iql, 'value') and 'iql_value' in payload:
+            self.iql.value.load_state_dict(payload['iql_value'])
+        if hasattr(self.iql, 'qnet') and 'iql_qnet' in payload:
+            self.iql.qnet.load_state_dict(payload['iql_qnet'])
+        if hasattr(self.iql, 'state_bias') and self.iql.state_bias is not None and 'iql_state_bias' in payload:
+            self.iql.state_bias.load_state_dict(payload['iql_state_bias'])
+        if hasattr(self.iql, 'alpha') and self.iql.alpha is not None and 'iql_alpha' in payload:
+            with torch.no_grad():
+                self.iql.alpha.copy_(payload['iql_alpha'])

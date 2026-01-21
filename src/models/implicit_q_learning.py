@@ -13,17 +13,46 @@ except Exception:
 
 
 if TORCH_AVAILABLE:
-    class MLP(nn.Module):
-        def __init__(self, in_dim, out_dim, hidden=256):
+    class ResidualBlock(nn.Module):
+        def __init__(self, d_model, dropout=0.1):
             super().__init__()
-            self.net = nn.Sequential(
-                nn.Linear(in_dim, hidden), nn.ReLU(),
-                nn.Linear(hidden, hidden), nn.ReLU(),
-                nn.Linear(hidden, out_dim)
-            )
+            self.linear1 = nn.Linear(d_model, d_model)
+            self.ln1 = nn.LayerNorm(d_model)
+            self.linear2 = nn.Linear(d_model, d_model)
+            self.ln2 = nn.LayerNorm(d_model)
+            self.dropout = nn.Dropout(dropout)
+            self.activation = nn.ReLU()
 
         def forward(self, x):
-            return self.net(x)
+            residual = x
+            out = self.linear1(x)
+            out = self.ln1(out)
+            out = self.activation(out)
+            out = self.dropout(out)
+            out = self.linear2(out)
+            out = self.ln2(out)
+            out = self.dropout(out)
+            out = self.activation(out + residual)
+            return out
+
+    class MLP(nn.Module):
+        def __init__(self, in_dim, out_dim, hidden=256, n_layers=3, dropout=0.1):
+            super().__init__()
+            self.input_proj = nn.Linear(in_dim, hidden)
+            self.activation = nn.ReLU()
+            self.blocks = nn.ModuleList([
+                ResidualBlock(hidden, dropout) for _ in range(n_layers)
+            ])
+            self.output_proj = nn.Linear(hidden, out_dim)
+            self.ln_out = nn.LayerNorm(hidden)
+
+        def forward(self, x):
+            x = self.input_proj(x)
+            x = self.activation(x)
+            for block in self.blocks:
+                x = block(x)
+            x = self.ln_out(x)
+            return self.output_proj(x)
 else:
     # 占位 MLP：在无 torch 时避免导入错误，不参与计算
     class MLP:

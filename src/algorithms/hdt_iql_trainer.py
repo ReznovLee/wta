@@ -20,7 +20,7 @@ class HDTIQLTrainer:
     def pretrain_dt(self, data_cfg: Dict[str, Any]):
         offline_epochs = int(self.cfg.get('training', {}).get('offline_epochs', 1))
         # 构建数据集 DataLoader（若存在离线数据集）
-        try:
+        if data_cfg.get('offline_dataset'):
             offline = data_cfg.get('offline_dataset', {})
             root = str(offline.get('root', 'data/trajectories'))
             max_len = int(offline.get('max_len', 256))
@@ -30,7 +30,7 @@ class HDTIQLTrainer:
                 root = os.path.join(project_root, root)
             from src.utils.offline_dataset import make_dataloader
             dl = make_dataloader(root, split='train', max_len=max_len, batch_size=self.cfg.get('training', {}).get('offline_batch_size', 8))
-        except Exception:
+        else:
             dl = None
         # 调用策略的 DT 预训练（若 DT 不可用则策略内部跳过）
         return self.policy.pretrain_dt(dataset_loader=dl, epochs=offline_epochs)
@@ -96,22 +96,18 @@ class HDTIQLTrainer:
             eval_int = int(self.cfg.get('training', {}).get('eval_interval_steps', 0))
             save_int = int(self.cfg.get('training', {}).get('save_interval_steps', 0))
             if eval_int > 0 and step % eval_int == 0:
-                try:
-                    metrics = self.evaluate(env, episodes=5)
-                    self.logger.info(f"Eval at step {step}: {metrics}")
-                except Exception:
-                    pass
+                metrics = self.evaluate(env, episodes=5)
+                self.logger.info(f"Eval at step {step}: {metrics}")
+
             if save_int > 0 and step % save_int == 0:
-                try:
-                    models_dir = self.cfg.get('paths', {}).get('models', 'experiments/results/models')
-                    root = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
-                    out_dir = models_dir if os.path.isabs(models_dir) else os.path.join(root, models_dir)
-                    os.makedirs(out_dir, exist_ok=True)
-                    out_path = os.path.join(out_dir, f"policy_step_{step}.pt")
-                    self.policy.save(out_path)
-                    self.logger.info(f"Saved policy checkpoint: {out_path}")
-                except Exception:
-                    pass
+                models_dir = self.cfg.get('paths', {}).get('models', 'experiments/results/models')
+                root = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
+                out_dir = models_dir if os.path.isabs(models_dir) else os.path.join(root, models_dir)
+                os.makedirs(out_dir, exist_ok=True)
+                out_path = os.path.join(out_dir, f"policy_step_{step}.pt")
+                self.policy.save(out_path)
+                self.logger.info(f"Saved policy checkpoint: {out_path}")
+
 
         return {'steps': total_steps, 'episodes': episodes}
 
