@@ -210,15 +210,21 @@ class DecisionTransformer(nn.Module):
         
         targets = []
 
-        # ... (targets 处理保持不变)
-        B = B_mask # 恢复 B 变量名含义以匹配后续代码
-        T = T_mask
-                a = actions[b][t] if b < len(actions) and t < len(actions[b]) else []
+        # 将 actions 转换为 targets (flattened index)
+        # actions 是一个嵌套列表: actions[b][t] = [(i, j), ...]
+        for b in range(B):
+            for t in range(T):
+                a = None
+                if b < len(actions) and t < len(actions[b]):
+                    a = actions[b][t]
+                
                 if a and isinstance(a, list) and len(a) > 0:
                     i, j = a[0]
+                    # target index = i * num_targets + j
                     targets.append(int(i) * J + int(j))
                 else:
-                    targets.append(0)
+                    targets.append(0) # Padding or No Action
+
         targets = torch.tensor(targets, dtype=torch.long, device=logits.device)
         logits_flat = logits.view(B * T, I * J)
         if returns_to_go is not None:

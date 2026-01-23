@@ -46,3 +46,7 @@
 2025-12-20 21:15:43 | INFO | dataset_builder | 开始生成 episode 20/20 | seed=1
 2025-12-20 21:20:59 | INFO | dataset_builder | 完成 episode 20/20 | split='val' | steps=128 | 输出: data/trajectories\val\ep_000019.npz
 2025-12-20 21:20:59 | INFO | dataset_builder | 数据集生成完成：episodes=20, total_steps=2560, 格式='npz'
+2026-01-23 19:39:45 | INFO | dataset_builder | 开始数据集生成流程
+2026-01-23 19:39:46 | INFO | dataset_builder | 开始生成 episode 1/20 | seed=0
+2026-01-23 19:47:44 | INFO | dataset_builder | 开始数据集生成流程
+2026-01-23 19:47:45 | INFO | dataset_builder | 开始生成 episode 1/20 | seed=0
