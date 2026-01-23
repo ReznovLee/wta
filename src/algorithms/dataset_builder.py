@@ -167,45 +167,51 @@ def build_offline_dataset(scenario_cfg: Dict[str, Any], data_cfg: Dict[str, Any]
 
     # 逐个 episode 生成
     for ep_idx in range(num_episodes):
-        seed = int(seeds[ep_idx % len(seeds)])
-        # 依据场景配置调整 env_cfg
-        env_cfg = _prepare_env_cfg(cfg_env, scenario_cfg, seed)
-        env = WTAEnv(env_cfg, cfg_reward, cfg_model)
-        logger.info(f"开始生成 episode {ep_idx+1}/{num_episodes} | seed={seed}")
-        obs = env.reset()
+        try:
+            seed = int(seeds[ep_idx % len(seeds)])
+            # 依据场景配置调整 env_cfg
+            env_cfg = _prepare_env_cfg(cfg_env, scenario_cfg, seed)
+            env = WTAEnv(env_cfg, cfg_reward, cfg_model)
+            logger.info(f"开始生成 episode {ep_idx+1}/{num_episodes} | seed={seed}")
+            import sys
+            sys.stdout.flush()
+            obs = env.reset()
 
-        steps: List[Dict[str, Any]] = []
-        done = False
-        step_idx = 0
-        while not done and step_idx < max_len:
-            masks = env.get_action_masks()
-            action = _mixed_expert_action(env, obs, masks, env.rng)
-            obs, reward, done, info = env.step(action)
-            steps.append({
-                'obs': obs,
-                'masks': masks,
-                'action': action,
-                'reward': float(reward),
-                'done': bool(done),
-                'info': info,
-            })
-            step_idx += 1
+            steps: List[Dict[str, Any]] = []
+            done = False
+            step_idx = 0
+            while not done and step_idx < max_len:
+                masks = env.get_action_masks()
+                action = _mixed_expert_action(env, obs, masks, env.rng)
+                obs, reward, done, info = env.step(action)
+                steps.append({
+                    'obs': obs,
+                    'masks': masks,
+                    'action': action,
+                    'reward': float(reward),
+                    'done': bool(done),
+                    'info': info,
+                })
+                step_idx += 1
 
-        ep_id = f"ep_{ep_idx:06d}"
-        split = 'train' if ep_idx < train_count else 'val'
-        out_name = f"{ep_id}.{fmt if TORCH_AVAILABLE or fmt=='npz' else 'pkl'}"
-        out_path = os.path.join(dirs[split], out_name)
-        episode_obj = {
-            'episode_id': ep_id,
-            'seed': seed,
-            'steps': steps,
-            'env_cfg': env_cfg,
-        }
-        _save_episode(episode_obj, out_path, fmt, logger)
-        index_manifest['episodes'].append({'id': ep_id, 'split': split, 'path': os.path.relpath(out_path, output_root), 'steps': len(steps)})
-        index_manifest['stats']['total_steps'] += len(steps)
+            ep_id = f"ep_{ep_idx:06d}"
+            split = 'train' if ep_idx < train_count else 'val'
+            out_name = f"{ep_id}.{fmt if TORCH_AVAILABLE or fmt=='npz' else 'pkl'}"
+            out_path = os.path.join(dirs[split], out_name)
+            episode_obj = {
+                'episode_id': ep_id,
+                'seed': seed,
+                'steps': steps,
+                'env_cfg': env_cfg,
+            }
+            _save_episode(episode_obj, out_path, fmt, logger)
+            index_manifest['episodes'].append({'id': ep_id, 'split': split, 'path': os.path.relpath(out_path, output_root), 'steps': len(steps)})
+            index_manifest['stats']['total_steps'] += len(steps)
 
-        logger.info(f"完成 episode {ep_idx+1}/{num_episodes} | split='{split}' | steps={len(steps)} | 输出: {out_path}")
+            logger.info(f"完成 episode {ep_idx+1}/{num_episodes} | split='{split}' | steps={len(steps)} | 输出: {out_path}")
+        except Exception as e:
+            logger.error(f"Episode {ep_idx+1} 生成失败: {e}", exc_info=True)
+            continue
 
     # 写入索引文件
     with open(os.path.join(output_root, 'index.json'), 'w', encoding='UTF-8') as f:

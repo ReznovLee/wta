@@ -49,7 +49,10 @@ class PhysicsEngine:
         self.motion_specs = self.env_cfg.get('motion_specs', {})
         self.tti_solver = self.env_cfg.get('tti_solver', {})
         self.fast_mode = bool(self.tti_solver.get('fast_mode', False))
-        self.use_cuda = bool(self.env_cfg.get('use_cuda', False)) and TORCH_AVAILABLE and torch.cuda.is_available()
+        try:
+            self.use_cuda = bool(self.env_cfg.get('use_cuda', False)) and TORCH_AVAILABLE and torch.cuda.is_available()
+        except Exception:
+            self.use_cuda = False
 
         # RNG（用于速度抖动与散布，可复现）
         self.seed = int(self.env_cfg.get('seed', 42))
@@ -64,6 +67,11 @@ class PhysicsEngine:
         self.mc_noise_std = float(self.tti_solver.get('mc_noise_std', 50.0))  # m
         # 拦截器瞄准模式：impact_point | defense_center | predicted_future
         self.aim_mode = str(self.tti_solver.get('aim_mode', 'predicted_future'))
+
+        # Guidance constants
+        self.pn_constant = float(self.weapon_specs.get('pn_constant', 3.0))
+        self.max_acc_g = float(self.weapon_specs.get('max_acc_g', 20.0))
+
 
         # 防御点 CSV（可选）
         self.defense_points = self._load_defense_points_csv(
@@ -313,15 +321,28 @@ class PhysicsEngine:
     # 成对距离与射程
     # ------------------------------
     def pairwise_distance(self, interceptors: List[Dict], targets: List[Dict]) -> np.ndarray:
+        print(f"DEBUG: pairwise_distance called. use_cuda={self.use_cuda}", flush=True)
         ni = len(interceptors)
         nt = len(targets)
         if self.use_cuda:
-            ip = torch.tensor([interceptors[i].get('position', [0, 0, 0]) for i in range(ni)], dtype=torch.float32, device='cuda')
-            tp = torch.tensor([targets[j].get('position', [0, 0, 0]) for j in range(nt)], dtype=torch.float32, device='cuda')
-            ip = ip.unsqueeze(1).expand(ni, nt, 3)
-            tp = tp.unsqueeze(0).expand(ni, nt, 3)
-            d = torch.linalg.norm(tp - ip, dim=2)
-            return d.detach().cpu().numpy()
+            try:
+                # Optimization: Convert to numpy array first to avoid PyTorch UserWarning about slow list-to-tensor conversion
+                ip_np = np.array([interceptors[i].get('position', [0, 0, 0]) for i in range(ni)])
+                tp_np = np.array([targets[j].get('position', [0, 0, 0]) for j in range(nt)])
+                
+                print("DEBUG: pairwise_distance creating tensors", flush=True)
+                ip = torch.tensor(ip_np, dtype=torch.float32, device='cuda')
+                tp = torch.tensor(tp_np, dtype=torch.float32, device='cuda')
+                ip = ip.unsqueeze(1).expand(ni, nt, 3)
+                tp = tp.unsqueeze(0).expand(ni, nt, 3)
+                d = torch.linalg.norm(tp - ip, dim=2)
+                print("DEBUG: pairwise_distance cuda done", flush=True)
+                return d.detach().cpu().numpy()
+            except Exception as e:
+                print(f"DEBUG: pairwise_distance CUDA failed: {e}. Fallback to CPU.", flush=True)
+                # Fallback to CPU if CUDA fails
+                pass
+
         dmat = np.zeros((ni, nt), dtype=float)
         for i in range(ni):
             ip = np.array(interceptors[i].get('position', [0, 0, 0]), dtype=float)
@@ -495,15 +516,25 @@ class PhysicsEngine:
         if getattr(self, 'fast_mode', False):
             ir = float(self.weapon_specs.get('intercept_radius_m', 50.0))
             if self.use_cuda:
-                ip = torch.tensor([interceptors[i].get('position', [0, 0, 0]) for i in range(ni)], dtype=torch.float32, device='cuda')
-                tp = torch.tensor([targets[j].get('position', [0, 0, 0]) for j in range(nt)], dtype=torch.float32, device='cuda')
-                vi = torch.tensor([float(interceptors[i].get('speed', float(self.weapon_specs.get('speed_mps', 300.0)))) for i in range(ni)], dtype=torch.float32, device='cuda')
-                ip_e = ip.unsqueeze(1).expand(ni, nt, 3)
-                tp_e = tp.unsqueeze(0).expand(ni, nt, 3)
-                d = torch.linalg.norm(tp_e - ip_e, dim=2)
-                vi_e = vi.unsqueeze(1).expand(ni, nt)
-                t_est = torch.clamp((d - ir) / torch.clamp(vi_e, min=1e-9), min=0.0)
-                return t_est.detach().cpu().numpy()
+                try:
+                    # Optimization: Convert to numpy array first
+                    ip_np = np.array([interceptors[i].get('position', [0, 0, 0]) for i in range(ni)])
+                    tp_np = np.array([targets[j].get('position', [0, 0, 0]) for j in range(nt)])
+                    vi_np = np.array([float(interceptors[i].get('speed', float(self.weapon_specs.get('speed_mps', 300.0)))) for i in range(ni)])
+
+                    ip = torch.tensor(ip_np, dtype=torch.float32, device='cuda')
+                    tp = torch.tensor(tp_np, dtype=torch.float32, device='cuda')
+                    vi = torch.tensor(vi_np, dtype=torch.float32, device='cuda')
+                    ip_e = ip.unsqueeze(1).expand(ni, nt, 3)
+                    tp_e = tp.unsqueeze(0).expand(ni, nt, 3)
+                    d = torch.linalg.norm(tp_e - ip_e, dim=2)
+                    vi_e = vi.unsqueeze(1).expand(ni, nt)
+                    t_est = torch.clamp((d - ir) / torch.clamp(vi_e, min=1e-9), min=0.0)
+                    return t_est.detach().cpu().numpy()
+                except RuntimeError:
+                    # Fallback to CPU
+                    pass
+
             vi_arr = np.array([float(interceptors[i].get('speed', float(self.weapon_specs.get('speed_mps', 300.0)))) for i in range(ni)], dtype=float)
             ip = np.array([interceptors[i].get('position', [0, 0, 0]) for i in range(ni)], dtype=float)
             tp = np.array([targets[j].get('position', [0, 0, 0]) for j in range(nt)], dtype=float)

@@ -1,6 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: UTF-8 -*-
 import os
+import sys
+
+# 将项目根目录加入 Python 搜索路径，解决 VSCode/Trae 找不到 src 包的问题
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.abspath(os.path.join(current_dir, '..'))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
 from src.utils.runtime_env import configure_runtime
 """
 训练入口：HDT-IQL
@@ -59,4 +67,12 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        # 强制刷新缓冲区，确保报错能打印出来
+        sys.stdout.flush()
+        sys.stderr.flush()
+        sys.exit(1)

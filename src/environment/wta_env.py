@@ -61,14 +61,18 @@ class WTAEnv:
     # ------------------------------
     def reset(self):
         """初始化目标与拦截器集合，清空事件队列并返回初始观测（使用 rng 保证可复现）。"""
+        print("DEBUG: WTAEnv.reset called", flush=True)
         num_targets = int(self.env_cfg.get('max_targets', 20))
         num_interceptors = int(self.env_cfg.get('max_interceptors', 10))
         # 优先：调用场景生成器生成更完整、可复现的初始化（失败则回退到 CSV/随机）
         targets = []
         interceptors = []
         try:
+            print("DEBUG: Importing make_scenario", flush=True)
             from .scenario_generator import make_scenario
+            print("DEBUG: Calling make_scenario", flush=True)
             scenario = make_scenario(self.env_cfg, num_targets=num_targets, num_interceptors=num_interceptors, seed=self.seed)
+            print("DEBUG: make_scenario returned", flush=True)
             if isinstance(scenario, dict):
                 sg_targets = scenario.get('targets', [])
                 sg_interceptors = scenario.get('interceptors', [])
@@ -84,8 +88,11 @@ class WTAEnv:
                         if new_seed != self.seed:
                             self.set_seed(new_seed)
                         # 重建 PhysicsEngine 以应用 tti_solver/motion_specs 等最新配置
+                        print("DEBUG: Re-initializing PhysicsEngine", flush=True)
                         self.engine = PhysicsEngine(self.env_cfg)
-        except Exception:
+                        print("DEBUG: PhysicsEngine re-initialized", flush=True)
+        except Exception as e:
+            print(f"DEBUG: Exception in reset scenario generation: {e}", flush=True)
             # 场景生成器不可用时，继续采用 CSV/随机回退
             pass
 
@@ -146,7 +153,10 @@ class WTAEnv:
         self._events = []
         self.history = []
         self.t = 0.0
-        return self.compute_observation(self.state, self.t)
+        print("DEBUG: reset calling compute_observation", flush=True)
+        obs = self.compute_observation(self.state, self.t)
+        print("DEBUG: reset compute_observation returned", flush=True)
+        return obs
 
     def step(self, action):
         """
@@ -402,14 +412,18 @@ class WTAEnv:
         - 时间：当前仿真时刻 t
         注意：保持维度稳定，存活标记用于下游模型或掩码结合。
         """
+        print("DEBUG: compute_observation start", flush=True)
         tgt = state['targets']
         itc = state['interceptors']
         # 目标类型编码：ballistic=0, cruise=1, aircraft=2
         type_to_id = {'ballistic': 0, 'cruise': 1, 'aircraft': 2}
 
         # 计算 pairwise 距离与 TTI 估计（用于模型与掩码）
+        print("DEBUG: calling pairwise_distance", flush=True)
         pair_dist = self.engine.pairwise_distance(state['interceptors'], state['targets'])
+        print("DEBUG: calling pairwise_tti", flush=True)
         pair_tti = self.engine.pairwise_tti(state['interceptors'], state['targets'])
+        print("DEBUG: pairwise calcs done", flush=True)
 
         obs = {
             'targets_pos': np.array([x['position'] for x in tgt]) if tgt else np.zeros((0, 3)),

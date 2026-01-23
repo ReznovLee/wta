@@ -6,5 +6,8 @@
     <option name="pathToExecutable" value="C:\Anaconda3\Scripts\black.exe" />
     <option name="sdkName" value="Python 3.9" />
   </component>
-  <component name="ProjectRootManager" version="2" project-jdk-name="wta" project-jdk-type="Python SDK" />
+  <component name="ProjectRootManager" version="2" project-jdk-name="Remote 3.10 (sftp://root@117.50.48.236:23/usr/local/miniconda3/envs/wta/bin/python)" project-jdk-type="Python SDK" />
+  <component name="PyPackaging">
+    <option name="earlyReleasesAsUpgrades" value="true" />
+  </component>
 </project>
